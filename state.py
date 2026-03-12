@@ -30,7 +30,7 @@ class KSPState:
         return angle
     
     #distance to target along a sphere given only latitude and longitudes. See https://en.wikipedia.org/wiki/Haversine_formula
-    def _haversine_distance(self, lat1, long1, lat2, lon2, r):
+    def _haversine_distance(self, lat1, lon1, lat2, lon2, r):
         lat1 = self._deg2rad(lat1)
         lat2 = self._deg2rad(lat2)
         lon1 = self._deg2rad(lon1)
@@ -51,7 +51,7 @@ class KSPState:
     #This is the initial bearing, note that this will change at each point along a sphereical curve
     #So this will be called the forward azimuth
     #see https://www.movable-type.co.uk/scripts/latlong.html
-    def _angle_to_target(self, lat1, long1, lat2, lon2, r):
+    def _angle_to_target(self, lat1, lon1, lat2, lon2):
         lat1 = self._deg2rad(lat1)
         lat2 = self._deg2rad(lat2)
         lon1 = self._deg2rad(lon1)
@@ -105,21 +105,20 @@ class KSPState:
     def get_state_as_dict(self):
         return {
             "distance_to_target": self.distance_to_target(),
-            "heading_error": self.heading_error(),
+            "heading_error": self.angle_error(),
             "speed": self.flight.speed,
             "vertical_speed": self.flight.vertical_speed,
             "pitch": self.flight.pitch,
             "roll": self.flight.roll,
             "heading": self.flight.heading,
             "angle_of_attack": self.flight.angle_of_attack,
-            "stall_fraction": self.flight.stall_fraction,
-            "fuel_fraction": self.fuel_fraction(),
+            "fuel_fraction": self.fuel(),
             "throttle": self.control.throttle,
         }
     
     #state vector with normalized
     def get_state_as_vector(self):
-        state = self.get_state_dict()
+        state = self.get_state_as_dict()
 
         return np.array([
             self._normalize(state["distance_to_target"], 100000.0),
@@ -129,8 +128,7 @@ class KSPState:
             self._normalize(state["pitch"], 90.0),
             self._normalize(state["roll"], 180.0),
             self._normalize(state["heading"], 180.0),
-            self._clip_norm(state["angle_of_attack"], 30.0),
-            max(0.0, min(1.0, state["stall_fraction"])),
+            self._normalize(state["angle_of_attack"], 30.0),
             max(0.0, min(1.0, state["fuel_fraction"])),
             max(0.0, min(1.0, state["throttle"])),
         ], dtype=np.float32)
