@@ -1,3 +1,5 @@
+from asyncio import timeout
+
 import torch
 import math
 import time
@@ -117,32 +119,45 @@ class KSPState(EnvBase):
         ], dtype=torch.float32)
 
     def _vessel_intact(self) -> bool:
-        try:
-            # BUG FIX: .parts is a manager object, .parts.all is the list
-            return len(self.vessel.parts.all) > 1
-        except Exception:
+      try:
+          return len(self.vessel.parts.all) > 5
+          if (self._step_count > 10
+              and obs[0].item() < 0.01
+              and abs(obs[4].item()) < 0.01):
             return False
+      except Exception:
+        return False
+        
+    def _wait_for_vessel(self, timeout=15.0):
+      start = time.time()
+      while time.time() - start < timeout:
+          try:
+              v = self.space_center.active_vessel
+              _ = v.name  # force a real RPC call to confirm it's valid
+              return v
+          except Exception:
+              time.sleep(0.5)
+      raise RuntimeError("KSP did not return a valid vessel within timeout")
 
     def _reset(self, tensor_dict=None) -> TensorDict:
         if not hasattr(self, 'conn') or self.conn is None:
-            # First call: connect and quicksave (done inside _connect)
+
             self._connect()
         else:
-            # Subsequent calls: load back to saved state
-            # BUG FIX: was self.quickload(), should be self.space_center.quickload()
-            self.space_center.quickload()
-            time.sleep(2.0)
 
-            # Re-grab vessel reference after load
+            self.space_center.quickload()
+            time.sleep(4.0)
+            self.vessel = self._wait_for_vessel()
             self.vessel = self.space_center.active_vessel
             self.body = self.vessel.orbit.body
             self._initial_fuel = self._get_fuel_max()
 
+        self.vessel.control.activate_next_stage()
+        time.sleep(1.0)
         self._step_count = 0
         self._orbit_achieved = False
         self._prev_obs = self._get_obs()
 
-        # BUG FIX: was missing batch_size=[]
         return TensorDict(
             {
                 'observation': self._prev_obs,
@@ -157,17 +172,15 @@ class KSPState(EnvBase):
         action = tensordict['action']
 
         throttle = (action[0].item() + 1.0) / 2.0
-        pitch_rate = action[1].item() * 5.0
-        heading_rate = action[2].item() * 5.0
+        pitch_input = action[1].item()
+        heading_input = action[2].item()
 
         self.vessel.control.throttle = max(min(throttle, 1.0), 0.0)
+        self.vessel.control.pitch = pitch_input
+        self.vessel.control.yaw = heading_input
 
-        ap = self.vessel.auto_pilot
-        ap.engage()
-        current_pitch = self.vessel.flight(self.body.reference_frame).pitch
-        current_heading = self.vessel.flight(self.body.reference_frame).heading
-        ap.target_pitch = max(-90, min(90, current_pitch + pitch_rate))
-        ap.target_heading = (current_heading + heading_rate) % 360
+        self.vessel.auto_pilot.disengage()
+        self.vessel.control.sas = True
 
         t_start = self.space_center.ut
         while self.space_center.ut < t_start + self.step_interval:
