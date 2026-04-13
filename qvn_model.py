@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
-from torchrl.modules import ValueOperator
 
 
 class QVNModel(nn.Module):
     def __init__(self, n_obs, n_actions, hidden_size):
         super().__init__()
+        # The critic scores state-action pairs directly.
         self.net = nn.Sequential(
             nn.Linear(n_obs + n_actions, hidden_size),
             nn.ReLU(),

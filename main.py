@@ -126,6 +126,7 @@ def load_latest_model(
     env: KSPState,
     device: torch.device,
 ):
+    # Checkpoints store the full SAC loss module, so rebuild that graph first.
     actor = build_actor(env, device)
     qvalue = build_qvalue(device)
     loss_module = build_loss_module(actor, qvalue, device)
@@ -165,6 +166,7 @@ def run_use_scenario(
 
     while True:
         td_device = td.to(device)
+        # Use the deterministic policy path for deployment.
         with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
             td_device = actor(td_device)
 

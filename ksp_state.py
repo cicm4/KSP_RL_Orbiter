@@ -1,18 +1,17 @@
-from asyncio import timeout
-
-import torch
 import math
-import time
 import socket
+import time
+
 import krpc
+import torch
 from tensordict import TensorDict
-from torchrl.envs import EnvBase
 from torchrl.data import Bounded, Unbounded, Composite
+from torchrl.envs import EnvBase
 
 
 class KSPState(EnvBase):
     def __init__(self, target_orbit_altitude=80000, step_interval=0.5, max_steps=2000, connection_name='Training', device=torch.device('cpu')):
-        # The reason it uses a CPU is that KRPC creates a size 10 tensor which would be too slow to move to the GPU
+        # Keep the environment on CPU; kRPC calls dominate the cost here.
         super().__init__(device=device)
         self.target_orbit_altitude = target_orbit_altitude
         self.step_interval = step_interval
@@ -30,7 +29,6 @@ class KSPState(EnvBase):
 
         n_observations = 10
 
-        # This is the observation space.
         self.observation_spec = Composite(
             observation=Bounded(
                 low=-2.0,
@@ -40,7 +38,6 @@ class KSPState(EnvBase):
             )
         )
 
-        # Continuous action space.
         self.action_spec = Composite(
             action=Bounded(
                 low=torch.tensor([-1.0, -1.0, -1.0]),
@@ -50,12 +47,10 @@ class KSPState(EnvBase):
             )
         )
 
-        # reward
         self.reward_spec = Composite(
             reward=Unbounded(shape=(1,), dtype=torch.float32)
         )
 
-        # done, terminated, truncated (end of episode)
         self.done_spec = Composite(
             done=Bounded(
                 low=0,
@@ -78,17 +73,13 @@ class KSPState(EnvBase):
         )
 
     def _connect(self):
-        #Connect to KSP, cache body parameters, quicksave initial state.
+        # Save a single reset point and quickload back to it each episode.
         try:
             self.conn = krpc.connect(name=self.connection_name)
         except ConnectionRefusedError as exc:
-            raise RuntimeError(
-                "Could not connect to kRPC."
-            ) from exc
+            raise RuntimeError("Could not connect to kRPC. Start KSP and enable the server.") from exc
         except socket.error as exc:
-            raise RuntimeError(
-                "kRPC connection error"
-            ) from exc
+            raise RuntimeError("kRPC connection failed.") from exc
         self.space_center = self.conn.space_center
         self.vessel = self.space_center.active_vessel
         self.body = self.vessel.orbit.body
@@ -121,6 +112,7 @@ class KSPState(EnvBase):
         flight = self.vessel.flight(self.body.reference_frame)
         orbit = self.vessel.orbit
 
+        # Normalize telemetry around the target orbit to keep scales stable.
         return torch.tensor([
             flight.mean_altitude / self.target_orbit_altitude,
             orbit.apoapsis_altitude / self.target_orbit_altitude,
@@ -141,7 +133,10 @@ class KSPState(EnvBase):
             "apoapsis": math.nan,
             "periapsis": math.nan,
             "altitude": math.nan,
+            "surface_altitude": math.nan,
             "speed": math.nan,
+            "vertical_speed": math.nan,
+            "situation": "",
         }
         try:
             flight = self.vessel.flight(self.body.reference_frame)
@@ -153,7 +148,10 @@ class KSPState(EnvBase):
                     "apoapsis": float(orbit.apoapsis_altitude),
                     "periapsis": float(orbit.periapsis_altitude),
                     "altitude": float(flight.mean_altitude),
+                    "surface_altitude": float(flight.surface_altitude),
                     "speed": float(orbit.speed),
+                    "vertical_speed": float(flight.vertical_speed),
+                    "situation": str(self.vessel.situation).lower(),
                 }
             )
         except Exception:
@@ -161,38 +159,28 @@ class KSPState(EnvBase):
         return metrics
 
     def _vessel_intact(self) -> bool:
-      try:
-          return len(self.vessel.parts.all) > 5
-          if (self._step_count > 10
-              and obs[0].item() < 0.01
-              and abs(obs[4].item()) < 0.01):
-              return False
-          elif (self._step_count > 20
-                   and obs[2].item() < 0.9
-                   and obs[4].item() < -0.05
-                   and obs[0].item() > 0.1):
-              return False
-          return True
-      except Exception:
-        return False
+        try:
+            # Part count is a coarse crash proxy, but it is cheap to query.
+            return len(self.vessel.parts.all) > 5
+        except Exception:
+            return False
         
     def _wait_for_vessel(self, timeout=15.0):
-      start = time.time()
-      while time.time() - start < timeout:
-          try:
-              v = self.space_center.active_vessel
-              _ = v.name  # force a real RPC call to confirm it's valid
-              return v
-          except Exception:
-              time.sleep(0.5)
-      raise RuntimeError("KSP did not return a valid vessel within timeout")
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                v = self.space_center.active_vessel
+                _ = v.name  # Force an RPC read to confirm the handle is valid.
+                return v
+            except Exception:
+                time.sleep(0.5)
+        raise RuntimeError("KSP did not return a valid vessel within timeout")
 
     def _reset(self, tensor_dict=None) -> TensorDict:
         if not hasattr(self, 'conn') or self.conn is None:
-
             self._connect()
         else:
-
+            # Reload the same launch state so every episode starts from one setup.
             self.space_center.quickload()
             time.sleep(4.0)
             self.vessel = self._wait_for_vessel()
@@ -228,22 +216,40 @@ class KSPState(EnvBase):
             "reward_orbit_bonus": 0.0,
             "reward_failure_penalty": 0.0,
             "reward_ground_penalty": 0.0,
+            "reward_descent_thrust_penalty": 0.0,
         }
 
         if not intact:
-            components["reward_failure_penalty"] = -5.0
-            return -5.0, components
+            components["reward_failure_penalty"] = -40.0
+            return -40.0, components
 
         components["reward_potential"] = (
             self._potential(current_obs) - self._potential(prev_obs)
         )
-        components["reward_alive"] = 0.01
+        # Keep this tiny so the agent prefers progress, not mere survival.
+        components["reward_alive"] = 0.001
 
-        if current_obs[1].item() >= 1.25:
-            components["reward_overshoot"] = -0.01
+        if current_obs[1].item() >= 1.6:
+            components["reward_overshoot"] = -0.05
+
+        # Penalize burning low in the atmosphere while descending, since it can
+        # inflate apoapsis without representing useful orbital progress.
+        current_altitude_m = max(current_obs[0].item(), 0.0) * self.target_orbit_altitude
+        if (
+            self._step_count > 10
+            and current_altitude_m < 10_000.0
+            and current_obs[4].item() < 0.0
+            and current_obs[8].item() > 0.1
+        ):
+            descent_ratio = min(abs(current_obs[4].item()), 1.0)
+            throttle_ratio = min(max(current_obs[8].item(), 0.0), 1.0)
+            altitude_ratio = 1.0 - (current_altitude_m / 10_000.0)
+            components["reward_descent_thrust_penalty"] = -2.0 * (
+                0.5 + altitude_ratio
+            ) * descent_ratio * throttle_ratio
 
         if self._orbit_achieved:
-            components["reward_orbit_bonus"] = 50.0
+            components["reward_orbit_bonus"] = 100.0
 
         reward = sum(components.values())
         return reward, components
@@ -276,6 +282,22 @@ class KSPState(EnvBase):
         step_info.update(metrics)
         return step_info
 
+    def _ground_contact_detected(self, metrics: dict) -> bool:
+        if self._step_count <= 10:
+            return False
+
+        situation = metrics.get("situation", "")
+        if "landed" in situation or "splashed" in situation:
+            return True
+
+        surface_altitude = metrics.get("surface_altitude", math.nan)
+        vertical_speed = metrics.get("vertical_speed", math.nan)
+        if math.isfinite(surface_altitude) and surface_altitude <= 1.0:
+            if not math.isfinite(vertical_speed) or vertical_speed <= 0.0:
+                return True
+
+        return False
+
     def _step(self, tensordict: TensorDict) -> TensorDict:
         action = tensordict['action']
 
@@ -290,6 +312,7 @@ class KSPState(EnvBase):
         self.vessel.auto_pilot.disengage()
         self.vessel.control.sas = True
 
+        # Hold the action for a fixed control interval before reading the next state.
         t_start = self.space_center.ut
         while self.space_center.ut < t_start + self.step_interval:
             time.sleep(0.01)
@@ -317,27 +340,28 @@ class KSPState(EnvBase):
             self._prev_obs, current_obs, intact
         )
 
-        terminated = not intact
-        truncated = self._step_count >= self.max_steps
-        if terminated:
-            termination_reason = "vessel_destroyed"
-        elif truncated:
-            termination_reason = "max_steps"
-
         if intact and current_obs[2].item() >= 1.0 and current_obs[1].item() >= 1.0:
-            terminated = True
             self._orbit_achieved = True
-            termination_reason = "orbit_achieved"
-
             reward, reward_components = self._reward_breakdown(
                 self._prev_obs, current_obs, intact
             )
 
-        if intact and current_obs[0].item() < 0.0 and self._step_count > 10:
+        terminated = False
+        truncated = False
+        if not intact:
+            terminated = True
+            termination_reason = "vessel_destroyed"
+        elif self._orbit_achieved:
+            terminated = True
+            termination_reason = "orbit_achieved"
+        elif self._ground_contact_detected(metrics):
             terminated = True
             termination_reason = "below_ground"
-            reward_components["reward_ground_penalty"] = -10.0 - reward
-            reward = -10.0
+            reward_components["reward_ground_penalty"] = -40.0 - reward
+            reward = -40.0
+        elif self._step_count >= self.max_steps:
+            truncated = True
+            termination_reason = "max_steps"
 
         self._prev_obs = current_obs
         self._last_termination_reason = termination_reason
@@ -362,10 +386,15 @@ class KSPState(EnvBase):
         )
     
     def _potential(self, obs):
-        apo = min(max(obs[1].item(), 0.0), 1.0)
+        altitude = min(max(obs[0].item(), 0.0), 0.35)
+        apo = min(max(obs[1].item(), 0.0), 1.1)
         peri = min(max(obs[2].item(), 0.0), 1.0)
 
-        return (10 * apo) + (20 * peri)
+        return (
+            2.0 * altitude
+            + 8.0 * apo
+            + 28.0 * peri
+        )
 
     def _reward_function(self, prev_obs, current_obs, intact) -> float:
         reward, _ = self._reward_breakdown(prev_obs, current_obs, intact)
