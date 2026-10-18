@@ -50,18 +50,19 @@ def _check_stop():
 
 
 class VehiclePolicy(nn.Module):
-    def __init__(self, hidden=256):
+    def __init__(self, hidden=256, *, observations=OBSERVATIONS):
         super().__init__()
         self.hidden = hidden
+        self.observations = observations
         self.actor = nn.Sequential(
-            nn.Linear(OBSERVATIONS, hidden),
+            nn.Linear(observations, hidden),
             nn.Tanh(),
             nn.Linear(hidden, hidden),
             nn.Tanh(),
             nn.Linear(hidden, 2),
         )
         self.critic = nn.Sequential(
-            nn.Linear(OBSERVATIONS, hidden),
+            nn.Linear(observations, hidden),
             nn.Tanh(),
             nn.Linear(hidden, hidden),
             nn.Tanh(),
@@ -107,7 +108,7 @@ def save_policy(path, model, contract, ancestry):
     temporary = path.with_suffix(".tmp.pt")
     torch.save(
         dict(
-            task=TASK,
+            task=contract.get("task", TASK),
             hidden=model.hidden,
             state_dict=model.state_dict(),
             contract=contract,
@@ -119,7 +120,7 @@ def save_policy(path, model, contract, ancestry):
     write_json(
         path.with_suffix(".metadata.json"),
         dict(
-            task=TASK,
+            task=contract.get("task", TASK),
             contract=contract,
             ancestry=ancestry,
             sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -131,15 +132,70 @@ def save_policy(path, model, contract, ancestry):
 
 def load_policy(path, *, device="cpu"):
     record = torch.load(path, map_location=device, weights_only=True)
+    contract = record.get("contract", {})
+    supported = {(TASK, OBSERVATIONS, FEATURE_SCHEMA)}
+    from .generalized_aero_env import (
+        TASK as AERO_TASK,
+        OBSERVATIONS as AERO_OBSERVATIONS,
+        FEATURE_SCHEMA as AERO_FEATURE_SCHEMA,
+    )
+
+    supported.add((AERO_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA))
     if (
-        record.get("task") != TASK
-        or record.get("contract", {}).get("observations") != OBSERVATIONS
-        or record.get("contract", {}).get("feature_schema") != FEATURE_SCHEMA
-    ):
+        record.get("task"),
+        contract.get("observations"),
+        contract.get("feature_schema"),
+    ) not in supported:
         raise ValueError("not a vehicle-conditioned ascent checkpoint")
-    model = VehiclePolicy(record["hidden"]).to(device)
+    if contract.get("task", record["task"]) != record["task"]:
+        raise ValueError("checkpoint task and contract disagree")
+    model = VehiclePolicy(record["hidden"], observations=contract["observations"]).to(
+        device
+    )
     model.load_state_dict(record["state_dict"])
     return model, record
+
+
+def transfer_aero_policy(path, *, device="cpu"):
+    """Preserve a v3 actor exactly while exposing two new aero inputs to PPO.
+
+    This is a new experiment initialized from existing weights, never a claim
+    of resumed optimizer state or a pre-existing aero-trained checkpoint.
+    """
+    from .generalized_aero_env import OBSERVATIONS as AERO_OBSERVATIONS
+
+    source, record = load_policy(path, device=device)
+    if record["task"] != TASK or source.observations != OBSERVATIONS:
+        raise ValueError("aero transfer requires an original v3 ascent checkpoint")
+    target = VehiclePolicy(source.hidden, observations=AERO_OBSERVATIONS).to(device)
+    state = target.state_dict()
+    for key, value in source.state_dict().items():
+        if key in ("actor.0.weight", "critic.0.weight"):
+            state[key].zero_()
+            state[key][:, :OBSERVATIONS].copy_(value)
+        else:
+            state[key].copy_(value)
+    target.load_state_dict(state)
+    return target, record
+
+
+def make_environment(count, *, envelope, **kwargs):
+    from .generalized_aero_env import AeroVehicleEnvelope, BatchedAeroAscent
+
+    cls = (
+        BatchedAeroAscent
+        if isinstance(envelope, AeroVehicleEnvelope)
+        else BatchedAscent
+    )
+    return cls(count, envelope=envelope, **kwargs)
+
+
+def scalar_observation(env, *, observations=OBSERVATIONS):
+    if observations == OBSERVATIONS:
+        return cpu_observation(env)
+    from .generalized_aero_env import cpu_observation as aero_observation
+
+    return aero_observation(env)
 
 
 def wilson(success, count):
@@ -164,7 +220,7 @@ def evaluate(
     physics_dt=0.25,
     export_crafts=False,
 ):
-    env = BatchedAscent(
+    env = make_environment(
         count, device=device, seed=seed, envelope=envelope, physics_dt=physics_dt
     )
     observation = env.observation()
@@ -358,7 +414,17 @@ def warm_value(model, env, *, steps, updates, batch_size):
 
 
 def ppo_train(
-    model, env, *, updates, horizon, batch_size, learning_rate, log, selected_callback
+    model,
+    env,
+    *,
+    updates,
+    horizon,
+    batch_size,
+    learning_rate,
+    log,
+    selected_callback,
+    target_kl=None,
+    validation_interval=5,
 ):
     """On-device PPO with proper terminal and time-limit bootstrap separation."""
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -421,8 +487,13 @@ def ppo_train(
         advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
         returns = returns.flatten()
         total_loss = torch.zeros((), device=env.device)
+        total_kl = torch.zeros_like(total_loss)
+        total_clipped = torch.zeros_like(total_loss)
         loss_count = 0
-        for _ in range(4):
+        early_stopped = False
+        for epoch in range(4):
+            epoch_kl = torch.zeros_like(total_loss)
+            epoch_batches = 0
             permutation = torch.randperm(len(returns), device=env.device)
             for selected in permutation.split(batch_size):
                 distribution = model.distribution(flat["obs"][selected])
@@ -431,7 +502,8 @@ def ppo_train(
                     distribution.log_prob(flat["latent"][selected])
                     - (1 - action.square() + 1e-6).log()
                 ).sum(-1)
-                ratio = (logp - flat["logp"][selected]).exp()
+                log_ratio = logp - flat["logp"][selected]
+                ratio = log_ratio.exp()
                 actor_loss = -torch.minimum(
                     ratio * advantage[selected],
                     ratio.clamp(0.8, 1.2) * advantage[selected],
@@ -444,7 +516,22 @@ def ppo_train(
                 nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 optimizer.step()
                 total_loss += loss.detach()
+                approximate_kl = ((ratio - 1) - log_ratio).detach().mean()
+                total_kl += approximate_kl
+                epoch_kl += approximate_kl
+                total_clipped += ((ratio - 1).abs() > 0.2).float().mean().detach()
+                epoch_batches += 1
                 loss_count += 1
+            # One synchronization per epoch, rather than per minibatch, keeps
+            # the safety check cheap with GPU-resident million-step rollouts.
+            mean_epoch_kl = float(epoch_kl / epoch_batches)
+            if not math.isfinite(mean_epoch_kl):
+                raise FloatingPointError(
+                    "PPO update produced a nonfinite KL divergence"
+                )
+            if target_kl is not None and mean_epoch_kl > target_kl:
+                early_stopped = True
+                break
         transitions += horizon * env.count
         _PHASE_PROGRESS.update(
             phase="ppo", completed_updates=update + 1, ppo_transitions=transitions
@@ -457,9 +544,14 @@ def ppo_train(
             completed_episodes=int(episode_count),
             completed_successes=int(successes),
             loss=float(total_loss / loss_count),
+            approximate_kl=float(total_kl / loss_count),
+            clip_fraction=float(total_clipped / loss_count),
+            optimization_epochs=epoch + 1,
+            kl_early_stop=early_stopped,
+            action_std=model.log_std.detach().exp().cpu().tolist(),
             elapsed_s=time.monotonic() - start,
         )
-        if (update + 1) % 5 == 0 or update + 1 == updates:
+        if (update + 1) % validation_interval == 0 or update + 1 == updates:
             selected_callback(transitions)
     return transitions
 
@@ -468,7 +560,7 @@ def cpu_parity(
     model, *, envelope, seed, count=8, steps=120, physics_dt=0.25, device="cpu"
 ):
     """Independent scalar RK4 implementation, same frozen craft/actions."""
-    env = BatchedAscent(
+    env = make_environment(
         count, seed=seed, envelope=envelope, physics_dt=physics_dt, device=device
     )
     references = [env.cpu_reference(index) for index in range(count)]
@@ -499,7 +591,9 @@ def cpu_parity(
                     np.max(
                         np.abs(
                             env.observation()[index].cpu().numpy()
-                            - cpu_observation(reference)
+                            - scalar_observation(
+                                reference, observations=model.observations
+                            )
                         )
                     )
                 ),
@@ -548,9 +642,11 @@ def evaluate_captured_transfer(model, *, count=8, seed=3000000):
                     action = (
                         expert_action(env)
                         if kind == "teacher"
-                        else model(torch.from_numpy(cpu_observation(env))[None])[
-                            0
-                        ].numpy()
+                        else model(
+                            torch.from_numpy(
+                                scalar_observation(env, observations=model.observations)
+                            )[None]
+                        )[0].numpy()
                     )
                 _, _, terminated, truncated, info = env.step(action)
                 if terminated or truncated:
@@ -574,11 +670,87 @@ def evaluate_captured_transfer(model, *, count=8, seed=3000000):
             drag_alpha_area=config.drag_alpha_area,
             lift_area=config.lift_area,
         ),
-        outside_batched_constant_cda_physics=True,
+        outside_batched_constant_cda_physics=model.observations == OBSERVATIONS,
         checkpoint_selection=False,
         live_ksp_validated=False,
         **results,
     )
+
+
+def experiment_contract(curriculum, physics="constant-cda"):
+    """Keep the original v3 contract stable; aero is a distinct v4 task."""
+    envelope = VehicleEnvelope(stages_min=2, stages_max=3)
+    if curriculum == "stock":
+        envelope = replace(
+            envelope,
+            stage_wet_to_upper_min=1.0,
+            stage_wet_to_upper_max=6.0,
+            stage_dry_fraction_min=0.08,
+            stage_dry_fraction_max=0.30,
+            initial_twr_min=1.15,
+            initial_twr_max=2.5,
+            upper_twr_min=0.6,
+            upper_twr_max=3.0,
+            isp_min=280,
+            isp_max=380,
+            sea_level_isp_ratio_min=0.2,
+            sea_level_isp_ratio_max=1.0,
+        )
+    if physics == "aero":
+        from .generalized_aero_env import (
+            AeroVehicleEnvelope,
+            TASK as AERO_TASK,
+            OBSERVATIONS as AERO_OBSERVATIONS,
+            FEATURE_SCHEMA as AERO_FEATURE_SCHEMA,
+        )
+
+        envelope = AeroVehicleEnvelope(**{**asdict(envelope), "stages_max": 4})
+        task, observations, schema = AERO_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA
+    elif physics == "constant-cda":
+        task, observations, schema = TASK, OBSERVATIONS, FEATURE_SCHEMA
+    else:
+        raise ValueError("unknown ascent physics profile")
+    four_stage = replace(envelope, stages_min=4, stages_max=4)
+    contract = dict(
+        task=task,
+        observations=observations,
+        feature_schema=schema,
+        actions=2,
+        train_envelope=asdict(envelope),
+        heldout_stage_envelope=asdict(four_stage),
+        physics_dt=0.25,
+        control_dt=2.0,
+        gamma=0.999,
+        curriculum=curriculum,
+        scope="Kerbin planar 2-3-stage liquid training; 4-stage heldout; not approved for KSP",
+        limitations=[
+            "No arbitrary staging graphs",
+            "No SRB or airbreathing engines",
+            "No crossfeed/asparagus",
+            "No flex/aerodynamic stability simulation",
+            "Attitude setpoint servo approximation",
+            "Ideal delta-v screen is not finite-burn reachability proof",
+        ],
+    )
+    if physics == "aero":
+        contract.pop("heldout_stage_envelope")
+        contract.update(
+            four_stage_test_envelope=asdict(four_stage),
+            four_stage_is_heldout=False,
+            max_time=1600.0,
+            orbit_tolerance=20000.0,
+            mu=3.5316e12,
+            radius=600000.0,
+            rotation_period=21549.425,
+            atmosphere_depth=70000.0,
+            atmosphere=[list(row) for row in EnvConfig().atmosphere],
+            physics="planar_angle_dependent_effective_areas",
+            scope="Kerbin planar 2-4-stage liquid training; fresh-craft tests; not approved for KSP",
+        )
+        contract["limitations"].append(
+            "No Mach-, part- or stage-dependent aerodynamic coefficients"
+        )
+    return envelope, four_stage, contract
 
 
 def main(argv=None):
@@ -606,6 +778,22 @@ def main(argv=None):
         help="Warm restart a matching checkpoint with fresh optimizers/worlds; not bitwise replay",
     )
     parser.add_argument(
+        "--transfer-from",
+        type=Path,
+        help="Initialize v4 aero from v3 weights with zero new input columns",
+    )
+    parser.add_argument(
+        "--ppo-only",
+        action="store_true",
+        help="Continue initialized weights directly with PPO; skip imitation",
+    )
+    parser.add_argument("--target-kl", type=float, default=0.02)
+    parser.add_argument("--validation-interval", type=int, default=5)
+    parser.add_argument("--learning-rate", type=float, default=1e-5)
+    parser.add_argument(
+        "--physics", choices=("constant-cda", "aero"), default="constant-cda"
+    )
+    parser.add_argument(
         "--curriculum", choices=("efficient", "stock"), default="efficient"
     )
     args = parser.parse_args(argv)
@@ -618,14 +806,53 @@ def main(argv=None):
             args.batch_size,
             args.hidden,
             args.eval_worlds,
+            args.validation_interval,
         )
         < 1
     ):
         parser.error("counts must be positive")
     if args.dagger_rounds < 0 or args.ppo_updates < 0 or args.value_updates < 0:
         parser.error("training rounds cannot be negative")
-    if args.evaluate and args.warm_start:
-        parser.error("evaluation and warm start are mutually exclusive")
+    if not math.isfinite(args.target_kl) or args.target_kl <= 0:
+        parser.error("target KL must be positive and finite")
+    if not math.isfinite(args.learning_rate) or args.learning_rate <= 0:
+        parser.error("learning rate must be positive and finite")
+    if (
+        sum(bool(item) for item in (args.evaluate, args.warm_start, args.transfer_from))
+        > 1
+    ):
+        parser.error(
+            "evaluation, warm start and transfer initialization are mutually exclusive"
+        )
+    if args.transfer_from and args.physics != "aero":
+        parser.error("transfer initialization requires --physics aero")
+    if args.ppo_only and not (args.warm_start or args.transfer_from):
+        parser.error("PPO-only training requires initialized checkpoint weights")
+    if args.ppo_only and not args.ppo_updates:
+        parser.error("PPO-only training requires positive PPO updates")
+    envelope, holdout, contract = experiment_contract(args.curriculum, args.physics)
+    if args.run_dir.exists() and any(args.run_dir.iterdir()):
+        parser.error("run directory must be empty; warm restart into a new directory")
+    initial_model = initial_record = None
+    if args.evaluate:
+        initial_model, initial_record = load_policy(args.evaluate, device=args.device)
+        if initial_record["contract"] != contract:
+            parser.error(
+                "evaluation checkpoint contract differs from CLI curriculum; choose its original curriculum"
+            )
+    elif args.warm_start:
+        initial_model, initial_record = load_policy(args.warm_start, device=args.device)
+        if initial_record["contract"] != contract:
+            parser.error("warm-start task/environment contract differs")
+    elif args.transfer_from:
+        initial_model, initial_record = transfer_aero_policy(
+            args.transfer_from, device=args.device
+        )
+        _, _, source_contract = experiment_contract(args.curriculum)
+        if initial_record["contract"] != source_contract:
+            parser.error(
+                "transfer source must match the original v3 curriculum contract"
+            )
     args.run_dir.mkdir(parents=True, exist_ok=True)
     events = (args.run_dir / "events.jsonl").open("a", buffering=1)
 
@@ -636,53 +863,11 @@ def main(argv=None):
 
     torch.set_num_threads(4)
     torch.manual_seed(args.seed)
-    envelope = VehicleEnvelope(stages_min=2, stages_max=3)
-    if args.curriculum == "stock":
-        envelope = replace(
-            envelope,
-            stage_wet_to_upper_min=1.0,
-            stage_wet_to_upper_max=6.0,
-            stage_dry_fraction_min=0.08,
-            stage_dry_fraction_max=0.30,
-            initial_twr_min=1.15,
-            initial_twr_max=2.5,
-            upper_twr_min=0.6,
-            upper_twr_max=3.0,
-            isp_min=280,
-            isp_max=380,
-            sea_level_isp_ratio_min=0.2,
-            sea_level_isp_ratio_max=1.0,
-        )
-    holdout = replace(envelope, stages_min=4, stages_max=4)
-    contract = dict(
-        task=TASK,
-        observations=OBSERVATIONS,
-        feature_schema=FEATURE_SCHEMA,
-        actions=2,
-        train_envelope=asdict(envelope),
-        heldout_stage_envelope=asdict(holdout),
-        physics_dt=0.25,
-        control_dt=2.0,
-        gamma=0.999,
-        curriculum=args.curriculum,
-        scope="Kerbin planar 2-3-stage liquid training; 4-stage heldout; not approved for KSP",
-        limitations=[
-            "No arbitrary staging graphs",
-            "No SRB or airbreathing engines",
-            "No crossfeed/asparagus",
-            "No flex/aerodynamic stability simulation",
-            "Attitude setpoint servo approximation",
-            "Ideal delta-v screen is not finite-burn reachability proof",
-        ],
-    )
-    if args.evaluate:
-        supplied = torch.load(args.evaluate, map_location="cpu", weights_only=True)
-        if supplied.get("contract") != contract:
-            parser.error(
-                "evaluation checkpoint contract differs from CLI curriculum; choose its original curriculum"
-            )
     write_json(args.run_dir / "contract.json", contract)
-    audit = normalization_audit(envelope)
+    audit_fn = normalization_audit
+    if args.physics == "aero":
+        from .generalized_aero_env import normalization_audit as audit_fn
+    audit = audit_fn(envelope)
     if not audit["all_craft_and_actuator_features_below_clip"]:
         parser.error(
             "declared vehicle context can saturate its observation normalization"
@@ -705,9 +890,13 @@ def main(argv=None):
             },
         ),
     )
-    model = VehiclePolicy(args.hidden).to(args.device)
+    model = VehiclePolicy(args.hidden, observations=contract["observations"]).to(
+        args.device
+    )
+    if initial_model is not None:
+        model = initial_model
     ancestry = dict(
-        algorithm="bc_dagger_then_ppo",
+        algorithm="ppo_from_checkpoint" if args.ppo_only else "bc_dagger_then_ppo",
         bc_transitions=0,
         dagger_transitions=0,
         ppo_transitions=0,
@@ -752,19 +941,21 @@ def main(argv=None):
         _STOP_CHECKPOINT = save_interrupted
         signal.signal(signal.SIGTERM, _request_stop)
         signal.signal(signal.SIGINT, _request_stop)
-    if args.warm_start:
-        model, record = load_policy(args.warm_start, device=args.device)
-        if record["contract"] != contract:
-            parser.error("warm-start task/environment contract differs")
+    if args.warm_start or args.transfer_from:
+        source = args.warm_start or args.transfer_from
         ancestry["upstream"] = dict(
-            sha256=hashlib.sha256(args.warm_start.read_bytes()).hexdigest(),
-            ancestry=record["ancestry"],
+            sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+            ancestry=initial_record["ancestry"],
+            source_contract=initial_record["contract"],
+            initialization="zero_padded_v3_to_v4_inputs"
+            if args.transfer_from
+            else "matching_contract_warm_restart",
+            optimizer_state_restored=False,
         )
     if args.evaluate:
-        model, record = load_policy(args.evaluate, device=args.device)
-        ancestry = record["ancestry"]
+        ancestry = initial_record["ancestry"]
     else:
-        env = BatchedAscent(
+        env = make_environment(
             args.worlds, device=args.device, seed=args.seed, envelope=envelope
         )
         optimizer = torch.optim.Adam(model.actor.parameters(), lr=3e-4)
@@ -799,52 +990,54 @@ def main(argv=None):
                 {**ancestry, "current_phase": phase, "selected": is_selected},
             )
 
-        if args.warm_start:
+        if args.warm_start or args.transfer_from:
             select("warm_start")
-        original_obs, original_actions, summary = collect_labels(
-            model, env, steps=args.label_steps, expert_mixing=1.0
-        )
-        ancestry["bc_transitions"] = summary["transitions"]
-        log("teacher_collection", **summary)
-        loss = fit_actor(
-            model,
-            original_obs,
-            original_actions,
-            updates=args.bc_updates,
-            batch_size=args.batch_size,
-            optimizer=optimizer,
-        )
-        log("behavior_clone", updates=args.bc_updates, final_action_mse=loss)
-        select("bc")
-        for round_index in range(args.dagger_rounds):
-            mixing = (
-                0.5 ** (round_index + 1)
-                if round_index < args.dagger_rounds - 1
-                else 0.0
+        if not args.ppo_only:
+            original_obs, original_actions, summary = collect_labels(
+                model, env, steps=args.label_steps, expert_mixing=1.0
             )
-            env.reset()
-            obs, actions, summary = collect_labels(
-                model, env, steps=args.label_steps, expert_mixing=mixing
-            )
-            ancestry["dagger_transitions"] += summary["transitions"]
-            log("dagger_collection", round=round_index + 1, **summary)
-            keep = torch.randperm(len(original_obs), device=args.device)[
-                : min(len(obs), len(original_obs))
-            ]
+            ancestry["bc_transitions"] = summary["transitions"]
+            log("teacher_collection", **summary)
             loss = fit_actor(
                 model,
-                torch.cat((original_obs[keep], obs)),
-                torch.cat((original_actions[keep], actions)),
+                original_obs,
+                original_actions,
                 updates=args.bc_updates,
                 batch_size=args.batch_size,
                 optimizer=optimizer,
             )
-            log("dagger_fit", round=round_index + 1, action_mse=loss)
-            select(f"dagger_{round_index + 1}")
+            log("behavior_clone", updates=args.bc_updates, final_action_mse=loss)
+            select("bc")
+            for round_index in range(args.dagger_rounds):
+                mixing = (
+                    0.5 ** (round_index + 1)
+                    if round_index < args.dagger_rounds - 1
+                    else 0.0
+                )
+                env.reset()
+                obs, actions, summary = collect_labels(
+                    model, env, steps=args.label_steps, expert_mixing=mixing
+                )
+                ancestry["dagger_transitions"] += summary["transitions"]
+                log("dagger_collection", round=round_index + 1, **summary)
+                keep = torch.randperm(len(original_obs), device=args.device)[
+                    : min(len(obs), len(original_obs))
+                ]
+                loss = fit_actor(
+                    model,
+                    torch.cat((original_obs[keep], obs)),
+                    torch.cat((original_actions[keep], actions)),
+                    updates=args.bc_updates,
+                    batch_size=args.batch_size,
+                    optimizer=optimizer,
+                )
+                log("dagger_fit", round=round_index + 1, action_mse=loss)
+                select(f"dagger_{round_index + 1}")
         if args.ppo_updates:
-            del original_obs, original_actions
-            if args.dagger_rounds:
-                del obs, actions, keep
+            if not args.ppo_only:
+                del original_obs, original_actions
+                if args.dagger_rounds:
+                    del obs, actions, keep
             if args.device.startswith("cuda"):
                 torch.cuda.empty_cache()
             model, record = load_policy(args.run_dir / "best.pt", device=args.device)
@@ -866,9 +1059,11 @@ def main(argv=None):
                 updates=args.ppo_updates,
                 horizon=args.horizon,
                 batch_size=args.batch_size,
-                learning_rate=1e-5,
+                learning_rate=args.learning_rate,
                 log=log,
                 selected_callback=lambda steps: select(f"ppo_{steps}", steps),
+                target_kl=args.target_kl,
+                validation_interval=args.validation_interval,
             )
         model, record = load_policy(args.run_dir / "best.pt", device=args.device)
         ancestry = record["ancestry"]
@@ -876,7 +1071,13 @@ def main(argv=None):
     final = {}
     for label, selected_envelope, count in (
         ("nominal", envelope, args.eval_worlds * 2),
-        ("heldout_four_stage", holdout, args.eval_worlds * 2),
+        (
+            "four_stage_fresh_crafts"
+            if args.physics == "aero"
+            else "heldout_four_stage",
+            holdout,
+            args.eval_worlds * 2,
+        ),
         (
             "heldout_single_stage",
             replace(
@@ -985,7 +1186,7 @@ def main(argv=None):
         policy_successes=captured["policy"]["successes"],
         teacher_successes=captured["teacher"]["successes"],
         episodes=captured["policy"]["episodes"],
-        outside_batched_constant_cda_physics=True,
+        outside_batched_constant_cda_physics=args.physics == "constant-cda",
     )
     final["selected_ancestry"] = ancestry
     final["live_ksp_validated"] = False
