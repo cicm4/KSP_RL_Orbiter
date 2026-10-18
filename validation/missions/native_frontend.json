@@ -1,0 +1,24 @@
+{
+  "job_id": "20261018T225815Z-8a22be3f",
+  "frontend": "native_ksp_toolbar",
+  "run_action": "user-confirmed click in the in-game Orbiter window",
+  "launch_dll_sha256": "fa3b81b2a7741365b5a6b0de2969196479bc6241ef6b86a5525eb2f1bb136a96",
+  "initial_client_failure": "Active status JSON lost the populated job identity through Unity JsonUtility; the engine continued the same accepted job successfully.",
+  "cold_reload_dll_sha256": "969667535a7fbe046e0a4ee05e540ee591735fb64810b4bb3eb1006298c5ccc9",
+  "cold_reload_source_sha256": "bf8145b6be4757e8ad8fb01a2a79d7325c6f485f17e4cbf083be101454b56d1f",
+  "cold_reload_observation": {
+    "heading": "Orbit verified",
+    "message": "Orbit verified. A full unpowered orbit completed.",
+    "mission": "Mun \u00b7 50 km",
+    "last_status_age_s": 0,
+    "run_enabled": false,
+    "stop_enabled": false,
+    "error_visible": false
+  },
+  "native_log": [
+    "[LOG 19:14:54.682] [OrbiterAutopilot] Native toolbar service initialized",
+    "[LOG 19:14:55.218] [OrbiterAutopilot] Flight toolbar button registered",
+    "[LOG 19:15:26.791] [OrbiterAutopilot] Launch-to-orbit mission verified"
+  ],
+  "stop_validation_scope": "The production Bridge was exercised against isolated HTTP fixtures, including scoped Stop after ambiguous Run acceptance; this native flight was allowed to finish and was not manually stopped."
+}

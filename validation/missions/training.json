@@ -1,0 +1,2916 @@
+{
+  "scope": "Headless simulator evaluation, separate from actual KSP mission evidence.",
+  "ascent": {
+    "checkpoint": "models/transfer_ascent_ppo.zip",
+    "sha256": "1cd7a99cffbc00e56e5e6efe75d8e971127ab42fbf5c717ed0f1744690a4c182",
+    "num_timesteps": 131072,
+    "seeds": [
+      800000,
+      800001,
+      800002,
+      800003,
+      800004,
+      800005,
+      800006,
+      800007,
+      800008,
+      800009,
+      800010,
+      800011,
+      800012,
+      800013,
+      800014,
+      800015,
+      800016,
+      800017,
+      800018,
+      800019,
+      800020,
+      800021,
+      800022,
+      800023,
+      800024,
+      800025,
+      800026,
+      800027,
+      800028,
+      800029,
+      800030,
+      800031,
+      800032,
+      800033,
+      800034,
+      800035,
+      800036,
+      800037,
+      800038,
+      800039,
+      800040,
+      800041,
+      800042,
+      800043,
+      800044,
+      800045,
+      800046,
+      800047,
+      800048,
+      800049,
+      800050,
+      800051,
+      800052,
+      800053,
+      800054,
+      800055,
+      800056,
+      800057,
+      800058,
+      800059,
+      800060,
+      800061,
+      800062,
+      800063
+    ],
+    "successes": 64,
+    "episodes": 64,
+    "success_rate": 1.0
+  },
+  "capture": {
+    "checkpoint": "models/moon_capture.zip",
+    "sha256": "8be91bece6dee9188144f6a166eb49f1949639bb77fa7bef1b2cb3a0cd10547a",
+    "environment": {
+      "body_name": "Mun",
+      "mu": 65138397520.78069,
+      "radius": 200000.0,
+      "atmosphere_depth": 0.0,
+      "sphere_of_influence": 2429559.1165647474,
+      "target_altitude": 50000.0,
+      "target_altitude_randomization": 0.2,
+      "orbit_tolerance": 5000.0,
+      "surface_clearance": 1000.0,
+      "atmosphere_clearance": 1000.0,
+      "plane_tolerance_deg": 5.0,
+      "mass": 2500.0,
+      "dry_mass": 1980.0,
+      "thrust": 60000.0,
+      "acceleration_gravity_limit": 32.0,
+      "isp": 345.0,
+      "control_dt": 2.0,
+      "physics_dt": 0.25,
+      "max_time": 1800.0,
+      "pointing_rate_deg_s": 30.0,
+      "gamma": 0.999,
+      "randomization": 0.1,
+      "arrival_vinf_fraction": 0.4,
+      "arrival_vinf_by_body": {
+        "Mun": 0.7,
+        "Minmus": 1.9
+      },
+      "arrival_radius_ratio": 1.04,
+      "arrival_periapsis_error": 0.005,
+      "arrival_plane_error_deg": 3.0,
+      "success_hold_steps": 2
+    },
+    "initialization": {
+      "checkpoint": "runs/capture_live_mun_minmus_v2_dagger/validated_ppo_capture.zip",
+      "sha256": "a61a059cc9492ccb5973416af7370e7f3dc584d33114f6dbb5216e241ddc6be7",
+      "source_num_timesteps": 131072,
+      "optimizer_and_step_count_reset": true
+    },
+    "arguments": {
+      "command": "train",
+      "system": null,
+      "run_dir": "runs/capture_live_arrival_v2_dagger",
+      "resume": null,
+      "initialize": "runs/capture_live_mun_minmus_v2_dagger/validated_ppo_capture.zip",
+      "train_bodies": null,
+      "heldout_bodies": null,
+      "steps": 131072,
+      "n_envs": 8,
+      "rollout_steps": 256,
+      "batch_size": 256,
+      "seed": 101,
+      "eval_seed": 900000,
+      "eval_episodes": 16,
+      "eval_freq": 16384,
+      "bc_episodes": 128,
+      "bc_epochs": 0,
+      "value_epochs": 60,
+      "dagger_rounds": 8,
+      "dagger_episodes": 32,
+      "dagger_epochs": 30,
+      "dagger_beta": 0.8,
+      "min_initial_success": 1.0,
+      "learning_rate": 1e-05,
+      "log_std": -3,
+      "hidden_size": 128,
+      "randomization": 0.1,
+      "max_time": null,
+      "mass": 2500.0,
+      "dry_mass": 1980.0,
+      "thrust": 60000.0,
+      "isp": 345.0,
+      "target_altitude_randomization": null,
+      "arrival_vinf_fraction": null,
+      "arrival_vinf_by_body": {
+        "Mun": 0.7,
+        "Minmus": 1.9
+      },
+      "vehicle_label": "live_arrival_mass2500_dry1980_60kN_345Isp",
+      "stress": true,
+      "skip_baselines": false
+    },
+    "selected_new_phase_ppo_steps": 0,
+    "completed_new_phase_ppo_experiment_steps": 131072,
+    "selection": "Fixed training-body validation seeds only; selected weights retain prior PPO plus DAgger adaptation.",
+    "independent_nominal": {
+      "checkpoint": "runs/capture_live_arrival_v2_dagger/arrival_ppo_capture.zip",
+      "sha256": "8be91bece6dee9188144f6a166eb49f1949639bb77fa7bef1b2cb3a0cd10547a",
+      "num_timesteps": 0,
+      "training_stage": "Train-selected best retained post-DAgger initialization (new PPO timestep0); prior base actor had131072PPOsteps. Full new131072PPOphase completed but did not improve selection score.",
+      "seeds": [
+        1300000,
+        1300001,
+        1300002,
+        1300003,
+        1300004,
+        1300005,
+        1300006,
+        1300007,
+        1300008,
+        1300009,
+        1300010,
+        1300011,
+        1300012,
+        1300013,
+        1300014,
+        1300015,
+        1300016,
+        1300017,
+        1300018,
+        1300019,
+        1300020,
+        1300021,
+        1300022,
+        1300023,
+        1300024,
+        1300025,
+        1300026,
+        1300027,
+        1300028,
+        1300029,
+        1300030,
+        1300031
+      ],
+      "train_bodies": {
+        "task": "orbital_capture_v2",
+        "scope": "local inbound orbital capture surrogate only",
+        "kind": "policy",
+        "successes": 64,
+        "episodes": 64,
+        "success_rate": 1.0,
+        "macro_success_rate": 1.0,
+        "success_ci95": [
+          0.9433759402071946,
+          1.0
+        ],
+        "per_body": {
+          "Mun": {
+            "successes": 32,
+            "episodes": 32,
+            "success_rate": 1.0,
+            "success_ci95": [
+              0.8928208017449293,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0,
+            "mean_return": 104.94690015849508
+          },
+          "Minmus": {
+            "successes": 32,
+            "episodes": 32,
+            "success_rate": 1.0,
+            "success_ci95": [
+              0.8928208017449293,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0,
+            "mean_return": 130.138932714031
+          }
+        },
+        "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+      },
+      "heldout_bodies": {
+        "task": "orbital_capture_v2",
+        "scope": "local inbound orbital capture surrogate only",
+        "kind": "policy",
+        "successes": 32,
+        "episodes": 32,
+        "success_rate": 1.0,
+        "macro_success_rate": 1.0,
+        "success_ci95": [
+          0.8928208017449293,
+          1.0
+        ],
+        "per_body": {
+          "Ike": {
+            "successes": 32,
+            "episodes": 32,
+            "success_rate": 1.0,
+            "success_ci95": [
+              0.8928208017449293,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0,
+            "mean_return": 103.13371578254038
+          }
+        },
+        "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+      }
+    },
+    "arrival_stress": {
+      "checkpoint": "runs/capture_live_arrival_v2_dagger/arrival_ppo_capture.zip",
+      "sha256": "8be91bece6dee9188144f6a166eb49f1949639bb77fa7bef1b2cb3a0cd10547a",
+      "seeds": [
+        1500000,
+        1500001,
+        1500002,
+        1500003,
+        1500004,
+        1500005,
+        1500006,
+        1500007
+      ],
+      "cases": {
+        "Mun_mass2400_vinf0.486Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2400.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 0.486,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Mun": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 103.5070439192317
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Mun_mass2400_vinf0.7Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2400.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 0.7,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Mun": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 104.90865849543033
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Mun_mass2600_vinf0.486Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2600.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 0.486,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Mun": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 103.50706543169116
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Mun_mass2600_vinf0.7Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2600.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 0.7,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Mun": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 104.90873526983552
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Mun_mass2800_vinf0.486Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2800.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 0.486,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Mun": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 103.50709314079224
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Mun_mass2800_vinf0.7Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2800.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 0.7,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Mun": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 104.90882625917243
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2400_vinf1Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2400.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.0,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 108.3508931074518
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2400_vinf1.5Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2400.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.5,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 119.6745280088033
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2400_vinf1.918Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2400.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.918,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 130.3334275506975
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2400_vinf2Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2400.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 2.0,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 130.36513762482878
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2600_vinf1Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2600.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.0,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 108.35067853440643
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2600_vinf1.5Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2600.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.5,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 119.67455556490611
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2600_vinf1.918Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2600.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.918,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 130.33359212287985
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2600_vinf2Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2600.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 2.0,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 130.36529176990643
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2800_vinf1Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2800.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.0,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 108.35042960552423
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2800_vinf1.5Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2800.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.5,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 119.67483169622305
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2800_vinf1.918Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2800.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 1.918,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 130.33432196293967
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        },
+        "Minmus_mass2800_vinf2Vc": {
+          "configuration": {
+            "body_name": "Mun",
+            "mu": 65138397520.78069,
+            "radius": 200000.0,
+            "atmosphere_depth": 0.0,
+            "sphere_of_influence": 2429559.1165647474,
+            "target_altitude": 50000.0,
+            "target_altitude_randomization": 0.2,
+            "orbit_tolerance": 5000.0,
+            "surface_clearance": 1000.0,
+            "atmosphere_clearance": 1000.0,
+            "plane_tolerance_deg": 5.0,
+            "mass": 2800.0,
+            "dry_mass": 1980.0,
+            "thrust": 60000.0,
+            "acceleration_gravity_limit": 32.0,
+            "isp": 345.0,
+            "control_dt": 2.0,
+            "physics_dt": 0.25,
+            "max_time": 1800.0,
+            "pointing_rate_deg_s": 30.0,
+            "gamma": 0.999,
+            "randomization": 0.05,
+            "arrival_vinf_fraction": 2.0,
+            "arrival_vinf_by_body": {},
+            "arrival_radius_ratio": 1.04,
+            "arrival_periapsis_error": 0.005,
+            "arrival_plane_error_deg": 3.0,
+            "success_hold_steps": 2
+          },
+          "policy": {
+            "task": "orbital_capture_v2",
+            "scope": "local inbound orbital capture surrogate only",
+            "kind": "policy",
+            "successes": 8,
+            "episodes": 8,
+            "success_rate": 1.0,
+            "macro_success_rate": 1.0,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "per_body": {
+              "Minmus": {
+                "successes": 8,
+                "episodes": 8,
+                "success_rate": 1.0,
+                "success_ci95": [
+                  0.6755924351161198,
+                  1.0
+                ],
+                "failure_counts": {},
+                "reference_budget_shortfalls": 0,
+                "fuel_exhaustions": 0,
+                "mean_return": 130.36607471712318
+              }
+            },
+            "interval_note": "Wilson 95% intervals describe sampled randomized episodes, not KSP transfer or end-to-end missions"
+          }
+        }
+      },
+      "scope": "Post-DAgger best-of-run, local-capture goal/craft/arrival stress; no KSP claim"
+    },
+    "stress_sampling_note": "18 settings reuse the same eight seeds; 144 episode results do not constitute 144 independent random missions."
+  },
+  "experimental_stock_capture": {
+    "scope": "Known stock body local inbound orbital capture in a finite-thrust point-mass surrogate; no transfer, launch or KSP execution claim",
+    "checkpoint": "models/stock_capture_experimental.zip",
+    "checkpoint_sha256": "a88f6350febc9449372a3f09befbc0f90ef2202d4793d08b567fe1d2ce5fe7fe",
+    "metadata_sha256": "0b4f74aadd0c7464edd7f84cd7017ad1c24523fd3b0b35bac1bf1bc2ddf8ae14",
+    "selected_from": "runs/capture_all_stock_v2/best.zip",
+    "selected_num_timesteps": 0,
+    "selection": "Fixed 8 validation seeds per training body only; fresh independent seeds never used for checkpoint selection",
+    "training_seed": 301,
+    "fixed_validation_seeds": [
+      2100000,
+      2100001,
+      2100002,
+      2100003,
+      2100004,
+      2100005,
+      2100006,
+      2100007
+    ],
+    "selected_dagger_round_before_ppo": 1,
+    "completed_dagger_rounds": 12,
+    "bounded_ppo_steps_completed": 65536,
+    "prior_ppo_ancestry_steps": 0,
+    "trained_bodies": [
+      "Kerbin",
+      "Mun",
+      "Minmus",
+      "Duna",
+      "Ike",
+      "Tylo",
+      "Gilly",
+      "Jool",
+      "Moho",
+      "Eve",
+      "Pol",
+      "Bop",
+      "Vall",
+      "Laythe",
+      "Dres",
+      "Eeloo"
+    ],
+    "heldout_bodies": [],
+    "zero_shot_body_claim": false,
+    "vehicle": {
+      "mass": 4000.0,
+      "dry_mass": 1000.0,
+      "thrust": 60000.0,
+      "isp": 345.0,
+      "randomization": 0.05,
+      "arrival_vinf_fraction": 0.4,
+      "target_altitude_randomization": 0.2,
+      "orbit_tolerance": 5000.0,
+      "max_time": 1800.0
+    },
+    "source_initialization": {
+      "checkpoint": "runs/capture_multi_body_v2_dagger_recovery/recovery_preppo_review.zip",
+      "sha256": "bb148b80a5a84a978bc3137e183ec8a4a9995cfb9da79b76168c263624bac210",
+      "source_num_timesteps": 0,
+      "source_train_bodies": [
+        "Kerbin",
+        "Mun",
+        "Duna",
+        "Tylo",
+        "Gilly",
+        "Jool",
+        "Moho",
+        "Eve"
+      ],
+      "source_heldout_bodies": [
+        "Minmus",
+        "Ike",
+        "Pol",
+        "Bop",
+        "Vall",
+        "Laythe",
+        "Dres",
+        "Eeloo"
+      ],
+      "optimizer_and_step_count_reset": true
+    },
+    "evaluation_arguments": {
+      "torch_cpu_threads": 1,
+      "nominal_seeds": [
+        2200000,
+        2200001,
+        2200002,
+        2200003,
+        2200004,
+        2200005,
+        2200006,
+        2200007,
+        2200008,
+        2200009,
+        2200010,
+        2200011,
+        2200012,
+        2200013,
+        2200014,
+        2200015,
+        2200016,
+        2200017,
+        2200018,
+        2200019,
+        2200020,
+        2200021,
+        2200022,
+        2200023,
+        2200024,
+        2200025,
+        2200026,
+        2200027,
+        2200028,
+        2200029,
+        2200030,
+        2200031
+      ],
+      "stress_seeds": [
+        2300000,
+        2300001,
+        2300002,
+        2300003,
+        2300004,
+        2300005,
+        2300006,
+        2300007
+      ],
+      "deterministic": true
+    },
+    "nominal": {
+      "successes": 511,
+      "episodes": 512,
+      "success_ci95": [
+        0.9890207217875779,
+        0.9996551422384565
+      ],
+      "per_body": {
+        "Kerbin": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Mun": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Minmus": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Duna": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Ike": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Tylo": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Gilly": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Jool": {
+          "successes": 31,
+          "episodes": 32,
+          "success_ci95": [
+            0.8425573617998744,
+            0.9944621398359969
+          ],
+          "failure_counts": {
+            "time_limit": 1
+          },
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Moho": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Eve": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Pol": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Bop": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Vall": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Laythe": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Dres": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        },
+        "Eeloo": {
+          "successes": 32,
+          "episodes": 32,
+          "success_ci95": [
+            0.8928208017449293,
+            1.0
+          ],
+          "failure_counts": {},
+          "reference_budget_shortfalls": 0,
+          "fuel_exhaustions": 0
+        }
+      }
+    },
+    "stress": {
+      "target_clearance_0.6x": {
+        "successes": 128,
+        "episodes": 128,
+        "success_ci95": [
+          0.9708630437264916,
+          1.0
+        ],
+        "per_body": {
+          "Kerbin": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Mun": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Minmus": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Duna": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Ike": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Tylo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Gilly": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Jool": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Moho": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eve": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Pol": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Bop": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Vall": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Laythe": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Dres": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eeloo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          }
+        }
+      },
+      "target_clearance_1.4x": {
+        "successes": 120,
+        "episodes": 128,
+        "success_ci95": [
+          0.8815120889557413,
+          0.9679930743049387
+        ],
+        "per_body": {
+          "Kerbin": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Mun": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Minmus": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Duna": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Ike": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Tylo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Gilly": {
+            "successes": 0,
+            "episodes": 8,
+            "success_ci95": [
+              0.0,
+              0.32440756488388023
+            ],
+            "failure_counts": {
+              "time_limit": 8
+            },
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Jool": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Moho": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eve": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Pol": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Bop": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Vall": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Laythe": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Dres": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eeloo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          }
+        }
+      },
+      "arrival_vinf_0.2_circular_speed": {
+        "successes": 126,
+        "episodes": 128,
+        "success_ci95": [
+          0.9448190233201829,
+          0.9957045502898559
+        ],
+        "per_body": {
+          "Kerbin": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Mun": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Minmus": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Duna": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Ike": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Tylo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Gilly": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Jool": {
+            "successes": 6,
+            "episodes": 8,
+            "success_ci95": [
+              0.40927543031016883,
+              0.9285207872478909
+            ],
+            "failure_counts": {
+              "time_limit": 2
+            },
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Moho": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eve": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Pol": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Bop": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Vall": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Laythe": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Dres": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eeloo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          }
+        }
+      },
+      "arrival_vinf_0.7_circular_speed": {
+        "successes": 127,
+        "episodes": 128,
+        "success_ci95": [
+          0.9570737405611394,
+          0.9986195681071257
+        ],
+        "per_body": {
+          "Kerbin": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Mun": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Minmus": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Duna": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Ike": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Tylo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Gilly": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Jool": {
+            "successes": 7,
+            "episodes": 8,
+            "success_ci95": [
+              0.5291118177871464,
+              0.9775825085499433
+            ],
+            "failure_counts": {
+              "out_of_fuel": 1
+            },
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 1
+          },
+          "Moho": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eve": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Pol": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Bop": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Vall": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Laythe": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Dres": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eeloo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          }
+        }
+      },
+      "craft_mass_3500_thrust_1_isp_1": {
+        "successes": 127,
+        "episodes": 128,
+        "success_ci95": [
+          0.9570737405611394,
+          0.9986195681071257
+        ],
+        "per_body": {
+          "Kerbin": {
+            "successes": 7,
+            "episodes": 8,
+            "success_ci95": [
+              0.5291118177871464,
+              0.9775825085499433
+            ],
+            "failure_counts": {
+              "time_limit": 1
+            },
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Mun": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Minmus": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Duna": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Ike": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Tylo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Gilly": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Jool": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Moho": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eve": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Pol": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Bop": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Vall": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Laythe": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Dres": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eeloo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          }
+        }
+      },
+      "craft_mass_4125_thrust_0.8_isp_0.9": {
+        "successes": 124,
+        "episodes": 128,
+        "success_ci95": [
+          0.9224023687386392,
+          0.9877817347549466
+        ],
+        "per_body": {
+          "Kerbin": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Mun": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Minmus": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Duna": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Ike": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Tylo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Gilly": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Jool": {
+            "successes": 4,
+            "episodes": 8,
+            "success_ci95": [
+              0.21521606221387757,
+              0.7847839377861224
+            ],
+            "failure_counts": {
+              "time_limit": 3,
+              "out_of_fuel": 1
+            },
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 1
+          },
+          "Moho": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eve": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Pol": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Bop": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Vall": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Laythe": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Dres": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          },
+          "Eeloo": {
+            "successes": 8,
+            "episodes": 8,
+            "success_ci95": [
+              0.6755924351161198,
+              1.0
+            ],
+            "failure_counts": {},
+            "reference_budget_shortfalls": 0,
+            "fuel_exhaustions": 0
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "nominal_full": "validation/missions/stock_capture_nominal.json.gz",
+      "stress_full": "validation/missions/stock_capture_stress.json.gz"
+    },
+    "arguments": {
+      "command": "train",
+      "system": null,
+      "run_dir": "runs/capture_all_stock_v2",
+      "resume": null,
+      "initialize": "runs/capture_multi_body_v2_dagger_recovery/recovery_preppo_review.zip",
+      "train_bodies": [
+        "Kerbin",
+        "Mun",
+        "Minmus",
+        "Duna",
+        "Ike",
+        "Tylo",
+        "Gilly",
+        "Jool",
+        "Moho",
+        "Eve",
+        "Pol",
+        "Bop",
+        "Vall",
+        "Laythe",
+        "Dres",
+        "Eeloo"
+      ],
+      "heldout_bodies": [],
+      "steps": 65536,
+      "n_envs": 8,
+      "rollout_steps": 256,
+      "batch_size": 256,
+      "seed": 301,
+      "eval_seed": 2100000,
+      "eval_episodes": 8,
+      "eval_freq": 16384,
+      "bc_episodes": 512,
+      "bc_epochs": 0,
+      "value_epochs": 60,
+      "dagger_rounds": 12,
+      "dagger_episodes": 64,
+      "dagger_epochs": 30,
+      "dagger_beta": 0.8,
+      "min_initial_success": 1.0,
+      "learning_rate": 3e-05,
+      "log_std": -3,
+      "hidden_size": 128,
+      "randomization": null,
+      "max_time": null,
+      "mass": null,
+      "dry_mass": null,
+      "thrust": null,
+      "isp": null,
+      "target_altitude_randomization": null,
+      "arrival_vinf_fraction": null,
+      "arrival_vinf_by_body": null,
+      "vehicle_label": "configured_surrogate_vehicle",
+      "stress": false,
+      "skip_baselines": true
+    },
+    "prior_ancestry": [
+      {
+        "checkpoint": "runs/capture_multi_body_v2_dagger/partial_capture_review.zip",
+        "sha256": "eb12924a0668884280a1d8f5c46322cc0e26d0261b04a4199a9cad44154b6bc4",
+        "training": "Fresh BC 128 episodes / 100 epochs plus 8 body-balanced DAgger rounds; selected round 8 by training validation (30/32); initial validation gate failed and PPO was withheld",
+        "num_timesteps": 0
+      },
+      {
+        "checkpoint": "runs/capture_multi_body_v2_dagger_recovery/recovery_preppo_review.zip",
+        "sha256": "bb148b80a5a84a978bc3137e183ec8a4a9995cfb9da79b76168c263624bac210",
+        "training": "Initialized from partial_capture_review; 256 additional teacher episodes collected without actor updates, then recovery DAgger; selected round 1 by training validation (64/64), actor tensors verified equal to dagger_best; frozen before PPO",
+        "num_timesteps": 0
+      }
+    ],
+    "training_method": "BC and DAgger actor selected before new PPO updates; no PPO ancestry. The bounded PPO experiment was completed but did not improve fixed validation.",
+    "stress_sampling_note": "Six settings reuse the same eight seeds per body. Do not pool these correlated settings as independent trials."
+  }
+}

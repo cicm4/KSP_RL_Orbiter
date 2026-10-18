@@ -3,28 +3,32 @@
 Accelerated orbital-launch training with a headless Gymnasium simulator and
 an external kRPC autopilot for Kerbal Space Program. Train without running the
 game, calibrate against actual flight measurements, then validate the learned
-controller in KSP. This is a Python tool and library foundation; it is not yet
-a packaged in-game autopilot mod.
+controller in KSP. A stock-toolbar KSP addon provides the in-game controls and
+starts the local Python flight engine. Training and policy execution stay in
+Python, connected to the game through kRPC.
 
-Two included PPO checkpoints have completed actual staged KSP launches:
+Three included ascent checkpoints have completed actual staged KSP launches:
 
 | Model | Training transitions | Unseen simulator launches | Actual KSP orbit |
 | --- | ---: | ---: | --- |
 | [Terrier PPO](models/terrier_ppo.zip) | 131,072 | 100/100 | 72.0 x 81.2 km |
 | [Terrier PPO with fitted aerodynamics](models/terrier_aero_ppo.zip) | 114,688 | 99/100 | 71.2 x 85.5 km |
+| [Transfer-craft PPO](models/transfer_ascent_ppo.zip) | 131,072 | 64/64 | 72.0 x 146.0 km |
 
-Orbit values are periapsis x apoapsis. Each model has one actual KSP launch on
-the same craft, followed by a separate 30–39 second coast check at zero throttle.
-This is not a cross-craft reliability estimate or a complete-revolution test.
+Orbit values are periapsis x apoapsis. The first two models each have one actual
+launch on the 18-part Terrier, followed by a separate 30–39 second coast check at
+zero throttle. The third uses the larger 20-part transfer craft and a broader
+safe parking-orbit envelope. These counts are not cross-craft reliability estimates.
 The [validation manifest](validation/terrier/manifest.json) links model hashes
-to the original KSP recordings. Keep each checkpoint with its metadata file.
+to the original Terrier recordings. Selected-destination validation is described
+below. Keep each checkpoint with its metadata file.
 
 ## Repository
 
 - `orbiter/`: reusable environment, training, calibration and KSP adapters.
 - `orbiter/configs/`: measured Terrier craft profiles, included in the package.
 - `tests/`: physics, reward, checkpoint, staging and fake-kRPC regression tests.
-- `models/`: the two small KSP-validated checkpoints and their metadata.
+- `models/`: portable controller checkpoints and their task/craft metadata.
 - `validation/terrier/`: actual KSP telemetry and calibration evidence.
 - `legacy/`: the original class project, notebook, paper, figures and historical
   checkpoints, preserved for comparison. Its scripts retain their original
@@ -49,8 +53,111 @@ For a minimal library install, use `pip install .`. Optional dependencies are
 `.[train]`, `.[ksp]` and `.[dev]`; `pip install -e '.[train,ksp,dev]'` installs a
 development checkout without the exact versions in `requirements.txt`.
 Installed commands include `orbiter-train`, `orbiter-live`, `orbiter-validate`,
-`orbiter-capture`, `orbiter-calibrate`, `orbiter-fit-aero`, `orbiter-make-craft`
-and `orbiter-bootstrap`. The `python -m orbiter.<module>` forms also work.
+`orbiter-capture`, `orbiter-calibrate`, `orbiter-fit-aero`, `orbiter-make-craft`,
+`orbiter-train-capture`, `orbiter-mission`, `orbiter-control`, `orbiter-mod` and `orbiter-bootstrap`.
+The `python -m orbiter.<module>` forms also work.
+
+To fly through a control panel, place the **OrbiterRL Transfer** rocket on Kerbin's
+launchpad and start the kRPC server in KSP. Open
+[Start Autopilot.command](<Start Autopilot.command>) on macOS, or run:
+
+```sh
+.venv/bin/python -m orbiter.control --project-root . --launch-model models/transfer_ascent_ppo.zip --capture-model models/moon_capture.zip
+```
+
+Choose **Mun** or **Minmus**, set a **40–60 km** destination orbit, and press
+**Run**. The active ship is checked before launch. The controller handles staging,
+parking orbit, transfer, capture, and a full-period orbit check. **Stop** releases
+the controls back to KSP. Flight progress and results appear in the panel;
+recordings are saved in `runs/control/`. The panel supports the trained 20-part
+transfer craft and these two destinations. It does not support arbitrary ships
+or interplanetary launches.
+
+Actual KSP Run-button checks completed the entire flight from the existing pad
+ship: a **50 km Mun goal reached 49.43 x 54.86 km**, and a **60 km Minmus goal
+reached 59.65 x 64.96 km**. Each then passed one full independent orbital period
+at zero throttle (3,117 and 6,395 seconds). Staging, ascent, transfer and capture
+ran without manual flight inputs. Refreshing the panel during flight preserves
+the locked destination and altitude; the flight continues independently of the page.
+
+The first Minmus 60 km attempt stopped safely after ascent because a node-vector
+check compared different-time inertial readings. The corrected check verifies
+the encoded burn in the same node frame, retaining strict axis/sign checks and
+KSP encounter verification. A fresh launchpad Run then passed. The
+[mission manifest](validation/missions/manifest.json) preserves both successful
+button flights, that failed attempt, the diagnostic, requests and final results.
+These individual demonstrations do not establish a repeated-flight success rate.
+
+### KSP toolbar addon
+
+With the Python environment above, the Mono C# compiler (`mcs`), and kRPC
+installed in KSP, build and install against your own game assemblies:
+
+```sh
+.venv/bin/python -m orbiter.mod --ksp-root "$KSP_ROOT" --project-root "$PWD" --python "$PWD/.venv/bin/python" --install
+```
+
+Restart KSP, enter flight, and click the **Orbiter** icon on the stock sidebar.
+The game window provides destination, altitude, **Run**, **Stop**, and flight
+status. It starts the configured local engine automatically; no browser window
+is required. Keep the kRPC server running. The same matched transfer rocket,
+Mun/Minmus destinations, and 40–60 km goal limits apply.
+
+A separate native-toolbar Run completed the full pad-to-Mun flight at the
+selected 50 km goal, reaching 49.35 x 54.91 km and then coasting unpowered for
+3,116.68 seconds. The first client lost its displayed job identity during that
+flight; the engine continued and passed every orbit/cleanup check. The corrected
+client uses KSP's managed JSON decoder with explicit identity/proof checks. A
+cold reload read the completed flight proof successfully. The
+[native flight recording](validation/missions/mun_native_launch.json) preserves
+the engine result separately from frontend validation.
+
+The installer writes only `GameData/OrbiterAutopilot`: the addon DLL, runtime
+settings, and an install receipt. The engine's output goes to `backend.log` there;
+flight recordings remain under the configured project's `runs/control/`.
+Absolute interpreter/project paths are stored in `settings.cfg`; rerun the
+installer with `--replace` after moving the environment or updating the addon.
+Replacement requires a matching install receipt and preserves backups with
+extensions KSP will not load as plugins. Game assemblies are never redistributed.
+
+Closing the window leaves the flight running. Stop waits for the engine's
+control-release result; a lost connection is not reported as a successful stop.
+The backend verifies its identity and flight job before accepting a native Stop,
+and an OS ownership lock prevents overlapping Orbiter mission workers after a
+backend restart. The optional validation-save bootstrap remains a separate addon
+with its own explicit startup flag.
+
+### Release package and license
+
+Package the current compiled addon with the Python source and the two validated
+live policy pairs:
+
+```sh
+.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.1.0.zip
+```
+
+The ZIP contains `GameData/OrbiterAutopilot`, `OrbiterEngine`, `install.py`,
+installation instructions, and a manifest of file hashes. Extract the complete
+archive into a permanent directory, then run `python3 install.py --ksp-root
+"<your KSP directory>"`. The installer prepares a Python environment, downloads
+its dependencies, and configures the prebuilt DLL with your local paths. Python,
+kRPC, KSP and Unity binaries are not bundled; copying GameData alone does not
+configure the Python engine. The packager checks the live models against the
+validation manifest and excludes the experimental capture policy.
+
+Normal installation derives the exact 20-part `OrbiterRL Transfer` rocket from
+your installed stock `Orbiter One.craft` and `Science Jr.craft`, checking its
+14,310 kg wet mass and staging profile. It creates a new file at the extracted
+release's `Ships/OrbiterRL Transfer.craft`; `--craft-output` selects another new
+path. Copy that file into your save's `Ships/VAB/`, load it in the VAB, assign
+crew, and launch onto the pad. Existing craft and stock templates are never
+overwritten. Use `--skip-craft` if you already have the supported rocket or the
+stock templates are unavailable. Stock-derived craft are not bundled in the ZIP.
+
+The new addon, Python engine and newly trained checkpoints use the
+[MIT license](LICENSE), copyright 2026 Camilo Correa Llano. Historical material
+under `legacy/`, including the class paper, retains its existing terms.
+Third-party software and game assets retain their respective licenses.
 
 The core environment does not import PyTorch or connect to KSP:
 
@@ -69,7 +176,7 @@ and critic fitting to complete discounted returns. GAE lambda is 1, gamma is
 `exp(-3)`, and learning rate is `3e-5`. These settings are explicit CLI options.
 Use `--bc-episodes 0` for an experiment without demonstrations. `--algo sac`
 and `--algo tqc` provide off-policy comparisons; they require their own tuning.
-Training is CPU based with one PyTorch thread per process.
+This craft-specific trainer uses one PyTorch CPU thread per process.
 
 Each run contains configuration, JSONL episode/evaluation/training metrics,
 random/scripted baselines, `latest.zip`, `best.zip`, and checkpoint metadata.
@@ -78,6 +185,197 @@ different seed range before reporting results. SIGINT/SIGTERM checkpoint the
 run. Off-policy continuation can save/reload replay with `--save-replay` and
 `--load-replay`; resume rejects a changed environment/reward contract. A resume
 restores policy/optimizer state, not a bit-for-bit simulation/RNG continuation.
+
+### Experimental spacecraft generalization
+
+`orbiter.train_generalized` trains a separate 54-input policy conditioned on
+ordered stage masses, thrust, Isp, available delta-v, burn duration, drag and
+attitude response. Float64 RK4 physics, observations, demonstrations and PPO
+updates stay on the selected GPU. Two independent jobs can use both GPUs:
+
+```sh
+.venv/bin/python -m orbiter.train_generalized --run-dir runs/generalized-stock --device cuda:0 --curriculum stock --seed 404 --worlds 8192 --label-steps 800 --bc-updates 10000 --dagger-rounds 10 --ppo-updates 500 --batch-size 16384 --eval-worlds 512
+.venv/bin/python -m orbiter.train_generalized --run-dir runs/generalized-efficient --device cuda:1 --curriculum efficient --seed 303 --worlds 8192 --label-steps 800 --bc-updates 10000 --dagger-rounds 10 --ppo-updates 500 --batch-size 16384 --eval-worlds 512
+```
+
+Run these in separate terminals or process sessions. Collection measured about
+340,000 simulator control transitions per second on each RTX 4090 at this batch
+size. Checkpoints are saved during training and on SIGINT/SIGTERM. `--resume`
+loads a matching policy with fresh optimizers and simulator worlds; it is a
+warm restart. Evaluation rejects a mismatched curriculum. The v3 task/schema
+records logarithmic actuator normalization and rejects older experimental
+contracts.
+
+This is an ascent curriculum for feasible sequential liquid rockets, with
+independent craft, four-stage, drag, actuator and captured-craft stress tests.
+It uses planar constant-CdA physics. The captured Transfer stress separately
+retains measured angle-dependent drag and lift, which remain outside the batched
+physics. SRBs, crossfeed, asymmetric thrust and aircraft are unsupported. Capture
+and whole-mission spacecraft generalization remain unqualified.
+
+The earlier pilot selected imitation actors despite completing 52.4 million PPO
+transitions per run: unseen nominal launches passed 203/256
+and 101/256 for the efficient and stock-like curricula. Captured Transfer stress
+passed 0/8 and 1/8. Those pilot artifacts remain outside the live model defaults;
+the corrected v3 experiments need their own evaluation and multiple distinct
+actual KSP craft before promotion. Simulator success alone cannot qualify a new
+spacecraft for the native Run button.
+
+## Selected-destination missions
+
+The mission extension separates ascent, encounter navigation, and local capture.
+`SystemCatalog` contains the 17 stock bodies, their hierarchy, measured constants,
+and three-dimensional ephemerides captured from the installed KSP. The pure
+planner supports a spacecraft already orbiting the destination's parent:
+Kerbin to Mun/Minmus, Jool to its moons, or heliocentric orbit to a planet.
+Sibling-planet window searches are **estimates**, not an executable Kerbin-to-Duna
+mission. Catalog coverage alone does not establish complete mission coverage.
+
+`CaptureEnv` is a separate 3D arrival task with 27 body-normalized observations
+and three acceleration components in the local radial/tangential/normal frame.
+It starts near the destination on an incoming trajectory; it does not learn
+launch, a transfer window, or SOI acquisition. Goals specify an orbital altitude
+and plane. Success requires a bound, safe orbit with both apses inside the target
+band and the requested plane, held for two decisions. The reward uses terminal
+success/failure, time/fuel costs, and potential shaping. Gravity-scaled action
+authority keeps low-gravity bodies from requiring extremely small network
+outputs. Finite thrust, fuel use, pointing slew, and substepped gravity are
+modeled; this is still a surrogate.
+
+Training uses PPO with behavior cloning and optional
+[DAgger](https://proceedings.mlr.press/v15/ross11a) recovery demonstrations.
+The latter labels states visited by the learned policy, addressing the drift
+seen with demonstrations alone. Checkpoints record the task version, catalog,
+body sets and environment contract; incompatible ascent/capture checkpoints
+are rejected. Held-out bodies never select the best checkpoint. Fixed-seed
+validation, fresh-seed evaluation, and arrival/craft stress tests are separate.
+
+```sh
+# New experiment at the expected remaining mass and destination arrival speeds.
+# Minmus is trained here, not a held-out body.
+orbiter-train-capture --train-bodies Mun,Minmus --heldout-bodies Ike --mass 2500 --dry-mass 1980 --randomization .1 --arrival-vinf-by-body Mun=0.7,Minmus=1.9 --bc-episodes 128 --dagger-rounds 8 --steps 131072 --run-dir runs/capture_moons
+orbiter-train-capture evaluate --resume runs/capture_moons/best.zip --eval-seed 400000 --eval-episodes 32 --stress --run-dir runs/capture_moons/test
+```
+
+Arrival speed and remaining mass must cover the actual transfer. Passing those
+nominal simulator cases does not establish reliability at a faster Minmus
+arrival or after a more expensive departure burn. Use `--arrival-vinf-fraction`,
+`--arrival-vinf-by-body`, `--mass`, `--dry-mass`, and `--randomization` to define a feasible training regime;
+check the rocket-equation budget before training or flying.
+
+`orbiter-mission` defaults to a read-only plan and fuel-budget check. `--fly`
+explicitly runs the actual game. Before departure it requires KSP's own patched
+conics to predict the requested SOI and safe periapsis, refines the node, executes
+a bounded finite burn, and checks the actual SOI transition. Capture uses either
+the selected neural policy or an explicitly named scripted baseline. Success
+also requires an independent full orbital period in KSP at zero throttle, with
+four on-rails coast probes. JSON/JSONL evidence records model hashes, commands,
+handoffs, cleanup, and observed orbits; a node prediction alone is not success.
+If a direct route crosses another moon first, the planner checks up to eight
+parking-orbit departure windows. Rejected candidates are removed without a
+departure burn; an exhausted search stops with controls released.
+
+```sh
+# Active vessel must already be in a safe Kerbin parking orbit.
+orbiter-mission --target Mun --target-altitude 50000 --output-dir runs/mun_plan
+orbiter-mission --fly --target Mun --target-altitude 50000 --capture-model models/moon_capture.zip --output-dir runs/mun_live
+
+# Fresh launch through independently verified target orbit, in one connection.
+orbiter-mission --fly --target Minmus --target-altitude 50000 --launch-model models/transfer_ascent_ppo.zip --launch-craft 'OrbiterRL Transfer' --stage-plan 3,2 --fuel-stages 2,1 --capture-model models/moon_capture.zip --output-dir runs/minmus_live
+
+# Use the compatible ship already on the launchpad, as the Run button does.
+orbiter-mission --fly --target Mun --target-altitude 50000 --launch-model models/transfer_ascent_ppo.zip --launch-active --stage-plan 3,2 --fuel-stages 2,1 --capture-model models/moon_capture.zip --output-dir runs/mun_active_pad
+```
+
+Use a craft-matched ascent model and a capture policy validated for the planned
+arrival. The 18-part Terrier has limited transfer reserve. `orbiter-make-craft
+--transfer` adds two upper-stage FL-T200 tanks to the generated Terrier profile:
+20 parts, 14,310 kg wet, 6,000/4,000 kg propellant, and the same `3,2` activation /
+`2,1` fuel-stage mapping. Its ascent checkpoint must use the larger craft profile.
+The launcher preserves existing vessels (`recover=False`), rejects existing
+maneuver nodes, and does not implicitly overwrite quicksave or persistent saves.
+An optional `--pad-save-name` requires `--ksp-root` and a new dedicated save name.
+To repeat a complete flight from an existing crewed pad state, replace
+`--launch-craft` with `--launch-pad-save NAME --ksp-root "$KSP_ROOT"`. This accepts
+only a named pre-launch snapshot in the dedicated `OrbiterRL` save and verifies
+the loaded craft's staging and wet mass. It cannot accompany `--pad-save-name`.
+The active KSP game must be `OrbiterRL` when using this snapshot route.
+
+After generating the Terrier as described below, create the transfer variant
+and train against its packaged profile:
+
+```sh
+orbiter-make-craft --transfer --source "$KSP_ROOT/saves/OrbiterRL/Ships/VAB/OrbiterRL Terrier.craft" --output "$KSP_ROOT/saves/OrbiterRL/Ships/VAB/OrbiterRL Transfer.craft"
+orbiter-train --config orbiter/configs/orbiter_rl_transfer.json --n-envs 8 --steps 131072 --run-dir runs/transfer_ascent
+```
+
+The included `moon_capture.zip` was initialized from a 131,072-step PPO actor,
+then adapted with DAgger for the transfer craft's remaining mass and arrival
+speeds. A further 131,072-step PPO experiment completed, but train-only checkpoint
+selection retained the actor before that new PPO phase (`num_timesteps=0`).
+Its fresh simulator evaluation passed 32/32 each for trained Mun and Minmus and
+held-out Ike. Eighteen arrival/mass settings each passed the same eight stress
+seeds; those are 18 settings x 8 seeds, not 144 independent random missions.
+These tests cover local capture, not launch or transfer reliability.
+
+The separate `stock_capture_experimental.zip` was trained on all 16 orbitable
+stock bodies. Fresh nominal capture tests passed 511/512: 32/32 on fifteen
+bodies and 31/32 on Jool (one timeout). Its generic vehicle is 4,000 kg wet /
+1,000 kg dry, 60 kN and 345 s ISP, with nominal arrival excess speed 0.4 times
+local circular speed. This differs from the transfer craft and moon-arrival
+policy. All 16 bodies are trained here; this is not zero-shot body evidence.
+The selected actor uses BC and DAgger with no PPO ancestry. The additional
+65,536-step PPO experiment regressed on fixed validation, so its updates were
+not selected. Separate stresses found Gilly timeouts at higher goals and Jool
+time/fuel failures. The checkpoint remains experimental and has no live-game
+validation. Full nominal/stress results and sampling details are linked from
+the [training evidence](validation/missions/training.json).
+
+In actual KSP, this policy completed the Kerbin-parking-orbit to Mun mission at
+49.3 x 55.0 km, followed by a full 3,117-second revolution with throttle zero and
+autopilot disengaged. The launch was recorded separately. The Minmus flight ran
+from a saved crewed pad through learned ascent and staging, transfer, and learned
+capture on one connection, reaching 49.57 x 54.88 km. It then passed a full
+5,621-second revolution at zero throttle. Four candidate departure windows were
+rejected before KSP verified a direct encounter on the fifth. These are individual
+actual demonstrations, not an estimated repeated-flight success rate. A scripted
+arrival baseline reached 47.9 x 55.0 km and passed its own full-revolution coast check;
+its controls and result are explicitly distinguished from the learned policy.
+The [mission manifest](validation/missions/manifest.json) links controller hashes,
+compressed game logs, training ancestry and independent evaluations. Recompute
+the local vacuum diagnostic without opening KSP:
+
+```sh
+python validation/missions/check_vacuum.py validation/missions/mun_scripted_arrival.jsonl.gz
+```
+
+That single-flight check compares logged mass flow, inferred powered impulse,
+and four short zero-thrust coasts. The fitted command/mass time offset conflates
+actuator and sequential RPC timing; it is not an independent latency measurement
+or an exact-Unity-physics claim.
+
+The architecture follows goal-conditioned control
+([UVFA](https://proceedings.mlr.press/v37/schaul15.html)) while retaining explicit
+orbital mechanics for long coasts. Similar practical navigation work includes
+[MechJeb](https://github.com/MuMech/MechJeb2) and
+[Kerbal Transfer Illustrator](https://github.com/theastrogoth/Kerbal-Transfer-Illustrator).
+More recent [contrastive goal RL](https://arxiv.org/abs/2206.07568) and
+[hindsight replay](https://proceedings.neurips.cc/paper/2017/hash/453fadbd8a1a3af50a9df4df899537b5-Abstract.html)
+are research alternatives; they are not implemented here or evidence that
+arbitrary destinations are reliable. The current deployment is an external
+kRPC autopilot, with in-game mod packaging still separate work.
+
+For larger experiments, the research shortlist also includes
+[JaxGCRL (ICLR 2025)](https://proceedings.iclr.cc/paper_files/paper/2025/file/2858e880333b3cd64f8192f13ddcca2f-Paper-Conference.pdf),
+which batches goal-conditioned simulation and replay on a GPU,
+[equivariant contrastive RL (2025)](https://arxiv.org/abs/2507.16139), which studies
+rotation symmetry in manipulation, and
+[TD-MPC2](https://arxiv.org/abs/2310.16828), which combines a learned world model
+with local planning. These results motivate future scaling/representation
+experiments; they do not validate spacecraft transfer. Here vacuum dynamics
+are already inexpensive and known, so the first implementation uses analytic
+navigation and a small learned capture policy, with KSP measurements testing
+the remaining simulator mismatch.
 
 ## Task and simulator
 
@@ -277,3 +575,9 @@ third-party mods are not distributed with this Python package.
   complexity before this small physical simulator becomes a sampling bottleneck.
   [Dynamics randomization](https://arxiv.org/abs/1710.06537) motivates varying
   physical parameters; uncertainty should ultimately come from KSP measurements.
+- [MetaMorph](https://arxiv.org/abs/2203.11931) motivates conditioning on vehicle
+  structure; this project's masked stage descriptors use a small MLP.
+  [RMA](https://arxiv.org/abs/2107.04034)
+  is a candidate for future adaptation to unknown dynamics. [Isaac Gym](https://arxiv.org/abs/2108.10470)
+  motivates keeping simulation and learning data on the GPU. Our physics is a
+  PyTorch RK4 implementation with the calibration limits described above.

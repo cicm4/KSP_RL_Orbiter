@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "supported_profile": "OrbiterRL Transfer",
+  "scope": "Known 20-part stock transfer craft; this signature does not qualify arbitrary mass-matched vessels.",
+  "source": "Actual KSP validation/missions/pad_reload_check.json and transfer_ascent_ppo metadata",
+  "wet_mass": 14310.0,
+  "stage_plan": [3, 2],
+  "fuel_stages": [2, 1],
+  "engines": [
+    {"name": "liquidEngine2", "activation_stage": 3, "decouple_stage": 2, "propellants": ["LiquidFuel", "Oxidizer"], "max_vacuum_thrust": 215000.0, "vacuum_specific_impulse": 320.0},
+    {"name": "liquidEngine3.v2", "activation_stage": 2, "decouple_stage": 1, "propellants": ["LiquidFuel", "Oxidizer"], "max_vacuum_thrust": 60000.0, "vacuum_specific_impulse": 345.0}
+  ],
+  "decouplers": [
+    {"name": "Decoupler.1", "activation_stage": 1, "decouple_stage": 1},
+    {"name": "Decoupler.1", "activation_stage": 2, "decouple_stage": 2}
+  ],
+  "parts": [
+    "Decoupler.1", "Decoupler.1",
+    "basicFin", "basicFin", "basicFin", "basicFin",
+    "fuelTankSmall", "fuelTankSmall", "fuelTankSmall", "fuelTankSmall", "fuelTankSmall",
+    "fuelTankSmall", "fuelTankSmall", "fuelTankSmall", "fuelTankSmall", "fuelTankSmall",
+    "liquidEngine2", "liquidEngine3.v2", "mk1pod.v2", "parachuteSingle"
+  ],
+  "vehicle_contract": {
+    "payload_mass": 940.0,
+    "stages": [
+      {"dry_mass": 2330.0, "fuel_mass": 6000.0, "thrust_vac": 215000.0, "isp_vac": 320.0, "isp_sl": 250.0},
+      {"dry_mass": 1040.0, "fuel_mass": 4000.0, "thrust_vac": 60000.0, "isp_vac": 345.0, "isp_sl": 85.0}
+    ],
+    "drag_area": 0.7447909856206689,
+    "drag_alpha_area": 6.846020002846322,
+    "lift_area": 4.434034202553299
+  }
+}

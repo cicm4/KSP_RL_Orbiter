@@ -1,0 +1,147 @@
+{
+  "success": true,
+  "scope": "Actual arrival continuation: not a fresh full mission",
+  "end_to_end_from_launch_verified": false,
+  "target": "Mun",
+  "controller": "scripted",
+  "initial_state": {
+    "ut": 27014.03710452019,
+    "source": "Mun",
+    "r": [
+      555909.7156698323,
+      -25986.856629898815,
+      -2278513.964238406
+    ],
+    "v": [
+      5.742558795900976,
+      3.9569515499099075,
+      343.45956374192934
+    ],
+    "mass": 2490.56298828125,
+    "dry_mass": 1980.0001609108665,
+    "thrust": 60000.0,
+    "isp": 345.0,
+    "fuel_mass": 510.5628273703835,
+    "vessel": "OrbiterRL Transfer",
+    "periapsis": 81532.1104540141,
+    "apoapsis": -2566973.720972462,
+    "situation": "VesselSituation.escaping"
+  },
+  "correction": {
+    "success": true,
+    "termination_reason": "node_complete",
+    "controller": "deterministic_node_executor",
+    "cleanup_errors": [],
+    "samples": 74,
+    "tolerance_m_s": 0.1,
+    "body": "Mun",
+    "node_ut": 27194.03710452019,
+    "planned_delta_v": 5.78139205933663,
+    "initial_remaining_delta_v": 5.781392053678998,
+    "initial_mass_kg": 2490.56298828125,
+    "available_delta_v": 776.1678222750904,
+    "reserve_delta_v": 0.0,
+    "estimated_full_throttle_seconds": 0.23977709326512103,
+    "planned_burn_start_ut": 27193.917215973557,
+    "actual_burn_start_ut": 27193.93631838777,
+    "remaining_delta_v": 0.09945326809480874,
+    "final_ut": 27197.63631838785,
+    "final_mass_kg": 2486.383056640625,
+    "propellant_consumed_kg": 4.179931640625
+  },
+  "capture": {
+    "success": true,
+    "controller": "scripted_capture_teacher",
+    "termination_reason": "target_orbit",
+    "steps": 73,
+    "final_orbit": {
+      "ut": 32835.287988300945,
+      "body": "Mun",
+      "vessel": "OrbiterRL Transfer",
+      "apoapsis": 54978.55987449511,
+      "periapsis": 47930.11678474143,
+      "eccentricity": 0.014015353913906738,
+      "semi_major_axis": 251454.33832961827,
+      "energy": -129523.31217167983,
+      "period": 3104.2024159004573,
+      "throttle": 0.0,
+      "situation": "VesselSituation.orbiting"
+    },
+    "cleanup_errors": []
+  },
+  "independent_coast": {
+    "success": true,
+    "requested_period_s": 3104.2024159004573,
+    "observed_coast_s": 3104.2220800764117,
+    "failures": [],
+    "samples": [
+      {
+        "ut": 32835.287988300945,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54978.55987449511,
+        "periapsis": 47930.11678474143,
+        "eccentricity": 0.014015353913906738,
+        "semi_major_axis": 251454.33832961827,
+        "energy": -129523.31217167983,
+        "period": 3104.2024159004573,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      },
+      {
+        "ut": 33611.358105488005,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54978.56084506298,
+        "periapsis": 47930.115656813694,
+        "eccentricity": 0.014015358091009174,
+        "semi_major_axis": 251454.33825093834,
+        "energy": -129523.31221220762,
+        "period": 3104.2024144435027,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      },
+      {
+        "ut": 34387.40822267507,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54978.56028311746,
+        "periapsis": 47930.11597324477,
+        "eccentricity": 0.014015356351258668,
+        "semi_major_axis": 251454.33812818112,
+        "energy": -129523.31227543946,
+        "period": 3104.2024121703466,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      },
+      {
+        "ut": 35163.45887697152,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54978.55919326338,
+        "periapsis": 47930.11680188237,
+        "eccentricity": 0.014015352543746966,
+        "semi_major_axis": 251454.33799757287,
+        "energy": -129523.31234271535,
+        "period": 3104.20240975181,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      },
+      {
+        "ut": 35939.510068377356,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54978.55924786575,
+        "periapsis": 47930.116497832,
+        "eccentricity": 0.014015353263855595,
+        "semi_major_axis": 251454.33787284888,
+        "energy": -129523.31240696026,
+        "period": 3104.2024074422334,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      }
+    ],
+    "scope": "One actual KSP orbital period with four on-rails coast probes, throttle zero and autopilot off."
+  },
+  "cleanup_errors": []
+}

@@ -1,0 +1,191 @@
+{
+  "server_instance": "e890e33e536c23cb953620d4b7f1d3c8",
+  "state": "running",
+  "active": true,
+  "can_run": false,
+  "preflight": {
+    "ready": true,
+    "failures": [],
+    "supported_profile": "OrbiterRL Transfer",
+    "profile_scope": "Known 20-part stock transfer craft; this signature does not qualify arbitrary mass-matched vessels.",
+    "profile_sha256": "e1d80e9e50c17c19ac8800f732bca2f18a7fb0d66084973bcbafc271de9e3b32",
+    "vessel": "OrbiterRL Transfer",
+    "situation": "VesselSituation.pre_launch",
+    "body": "Kerbin",
+    "mass": 14310.0,
+    "expected_mass": 14310.0,
+    "current_stage": 4,
+    "part_names": [
+      "Decoupler.1",
+      "Decoupler.1",
+      "basicFin",
+      "basicFin",
+      "basicFin",
+      "basicFin",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "liquidEngine2",
+      "liquidEngine3.v2",
+      "mk1pod.v2",
+      "parachuteSingle"
+    ],
+    "engines": [
+      {
+        "name": "liquidEngine2",
+        "activation_stage": 3,
+        "decouple_stage": 2,
+        "propellants": [
+          "LiquidFuel",
+          "Oxidizer"
+        ],
+        "active": false,
+        "has_fuel": true,
+        "can_shutdown": true,
+        "available_thrust": 168405.171875,
+        "thrust_limit": 1.0,
+        "max_vacuum_thrust": 215000.0,
+        "vacuum_specific_impulse": 320.0
+      },
+      {
+        "name": "liquidEngine3.v2",
+        "activation_stage": 2,
+        "decouple_stage": 1,
+        "propellants": [
+          "LiquidFuel",
+          "Oxidizer"
+        ],
+        "active": false,
+        "has_fuel": true,
+        "can_shutdown": true,
+        "available_thrust": 15104.4443359375,
+        "thrust_limit": 1.0,
+        "max_vacuum_thrust": 60000.0,
+        "vacuum_specific_impulse": 345.0
+      }
+    ],
+    "decouplers": [
+      {
+        "name": "Decoupler.1",
+        "activation_stage": 1,
+        "decouple_stage": 1
+      },
+      {
+        "name": "Decoupler.1",
+        "activation_stage": 2,
+        "decouple_stage": 2
+      }
+    ],
+    "crew_names": [
+      "Valentina Kerman"
+    ],
+    "control_state": "full",
+    "control_source": "kerbal",
+    "controlling_part": {
+      "name": "mk1pod.v2",
+      "title": "Mk1 Command Pod",
+      "connection_object": "<SpaceCenter.Part remote object #7>"
+    },
+    "ut": 38115.958388536055,
+    "fuel_stage_masses": [
+      6000.0,
+      4000.0
+    ]
+  },
+  "phase": "ascent",
+  "telemetry": {
+    "event": "ascent_telemetry",
+    "wall_time": 1792364561.43364,
+    "phase": "ascent",
+    "step": 131,
+    "observation": [
+      0.8234211802482605,
+      0.12318433821201324,
+      0.9398606419563293,
+      1.1563504934310913,
+      -0.1694469004869461,
+      0.34430354833602905,
+      0.23460617661476135,
+      1.0,
+      -0.16295814514160156,
+      0.9866330027580261,
+      0.04677140712738037,
+      0.18818572163581848,
+      0.0,
+      1.8224327564239502,
+      0.1765788495540619,
+      1.153243899345398
+    ],
+    "altitude": 82342.11558727862,
+    "vertical_speed": 276.68921353738153,
+    "horizontal_speed": 2111.058177229908,
+    "north_speed": 1.2494514798430805,
+    "apoapsis": 115635.05370432884,
+    "periapsis": -101668.14280333632,
+    "energy": -2909140.247800476,
+    "momentum": 1440463902.7788794,
+    "dynamic_pressure": 0.0,
+    "surface_altitude": 82342.11558727745,
+    "latitude": -0.0844535597491428,
+    "pitch": -9.378639221191406,
+    "heading": 89.99726104736328,
+    "throttle": 0.04677140712738037,
+    "mass": 3357.21435546875,
+    "available_thrust": 60000.0,
+    "situation": "vesselsituation.sub_orbital",
+    "current_stage": 2,
+    "stage": 1,
+    "position_inertial": [
+      471118.23790032044,
+      -1005.7669095036052,
+      -493596.3503255913
+    ],
+    "velocity_inertial": [
+      1718.1497655917683,
+      0.841612398849669,
+      1257.4123366468602
+    ],
+    "ut_begin": 38381.338388493576,
+    "ut_end": 38381.338388493576,
+    "time": 263.4599999578277,
+    "fuel_fraction": 0.344303560256958
+  },
+  "last_event": {
+    "event": "ascent_action",
+    "wall_time": 1792364561.434922,
+    "phase": "ascent",
+    "step": 131,
+    "ut": 38381.338388493576,
+    "policy_action": [
+      -0.906264066696167,
+      -1.0
+    ],
+    "applied_action": [
+      -0.906264066696167,
+      -1.0
+    ],
+    "throttle": 0.046867966651916504,
+    "pitch_setpoint": -10.0,
+    "heading_setpoint": 90.0
+  },
+  "error": null,
+  "mission": {
+    "id": "20261018T225815Z-8a22be3f",
+    "target": "Mun",
+    "target_altitude_m": 50000.0,
+    "output_dir": "/example/project/runs/control/20261018T225815Z-8a22be3f",
+    "started_at": "2026-10-18T22:58:15.518320+00:00",
+    "finished_at": null,
+    "returncode": null,
+    "result": null
+  },
+  "models_ready": true,
+  "model_errors": []
+}

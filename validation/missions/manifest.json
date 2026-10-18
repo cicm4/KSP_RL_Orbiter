@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "validation_date": "2026-10-18",
+  "game": {
+    "version": "1.12.5.3190",
+    "krpc_server": "0.5.4",
+    "krpc_client": "0.6",
+    "save": "OrbiterRL"
+  },
+  "scope": "Actual KSP direct-child transfers plus separately measured local capture training. Interplanetary execution and universal reliability are unproven.",
+  "models": {
+    "ascent": {
+      "checkpoint": "models/transfer_ascent_ppo.zip",
+      "sha256": "1cd7a99cffbc00e56e5e6efe75d8e971127ab42fbf5c717ed0f1744690a4c182",
+      "metadata": "models/transfer_ascent_ppo.metadata.json",
+      "metadata_sha256": "8c94dbec79cdaa0d81245b3adf434e3719b69848d62e30da1b85c68eec16511e"
+    },
+    "capture": {
+      "checkpoint": "models/moon_capture.zip",
+      "sha256": "8be91bece6dee9188144f6a166eb49f1949639bb77fa7bef1b2cb3a0cd10547a",
+      "metadata": "models/moon_capture.metadata.json",
+      "metadata_sha256": "10a219a9991e7dbbb3169f4249c6e2f4a82c8d558857f7bb32e6598a0d57eed0"
+    },
+    "experimental_stock_capture": {
+      "checkpoint": "models/stock_capture_experimental.zip",
+      "sha256": "a88f6350febc9449372a3f09befbc0f90ef2202d4793d08b567fe1d2ce5fe7fe",
+      "metadata": "models/stock_capture_experimental.metadata.json",
+      "metadata_sha256": "0b4f74aadd0c7464edd7f84cd7017ad1c24523fd3b0b35bac1bf1bc2ddf8ae14"
+    }
+  },
+  "flights": [
+    {
+      "id": "mun_learned",
+      "target": "Mun",
+      "summary": "validation/missions/mun_learned.json",
+      "recording": "validation/missions/mun_learned.jsonl.gz",
+      "end_to_end_from_launch": false,
+      "scope": "Kerbin parking orbit to independently coasted Mun orbit; learned ascent recorded separately."
+    },
+    {
+      "id": "minmus_learned",
+      "target": "Minmus",
+      "summary": "validation/missions/minmus_learned.json",
+      "recording": "validation/missions/minmus_learned.jsonl.gz",
+      "end_to_end_from_launch": true,
+      "scope": "One connection from a saved crewed pre-launch pad through learned ascent, staging, transfer, learned capture and an independently coasted full orbit. One demonstrated actual flight."
+    },
+    {
+      "id": "mun_panel_launch",
+      "target": "Mun",
+      "summary": "validation/missions/mun_panel_launch.json",
+      "recording": "validation/missions/mun_panel_launch.jsonl.gz",
+      "panel_request": "validation/missions/mun_panel_launch.request.json",
+      "panel_status": "validation/missions/mun_panel_launch.status.json",
+      "end_to_end_from_launch": true,
+      "scope": "Browser Run button controlling the existing crewed active launchpad ship through staging, learned ascent, direct transfer, learned capture at the selected 50 km goal and an independent full KSP orbital period. One actual flight; no manual flight inputs."
+    },
+    {
+      "id": "minmus_panel_launch",
+      "target": "Minmus",
+      "summary": "validation/missions/minmus_panel_launch.json",
+      "recording": "validation/missions/minmus_panel_launch.jsonl.gz",
+      "panel_request": "validation/missions/minmus_panel_launch.request.json",
+      "panel_status": "validation/missions/minmus_panel_launch.status.json",
+      "end_to_end_from_launch": true,
+      "scope": "Browser Run button controlling the existing crewed active launchpad ship through staging, learned ascent, direct transfer after four rejected windows, learned capture at the selected 60 km goal and an independent full KSP orbital period. One actual post-fix flight; no manual flight inputs."
+    },
+    {
+      "id": "mun_native_launch",
+      "target": "Mun",
+      "summary": "validation/missions/mun_native_launch.json",
+      "recording": "validation/missions/mun_native_launch.jsonl.gz",
+      "panel_request": "validation/missions/mun_native_launch.request.json",
+      "panel_status": "validation/missions/mun_native_launch.status.json",
+      "end_to_end_from_launch": true,
+      "frontend": "native_ksp_toolbar",
+      "scope": "User-confirmed native Run button on the existing crewed launchpad ship through staged learned ascent, transfer, learned capture at 50 km and a full unpowered KSP orbital period. The first native client lost status identity during flight; the Python engine completed successfully. Fixed-client cold-reload validation is recorded separately."
+    }
+  ],
+  "baseline": {
+    "summary": "validation/missions/mun_scripted_arrival.json",
+    "recording": "validation/missions/mun_scripted_arrival.jsonl.gz",
+    "scope": "Scripted capture from an actual Mun SOI arrival; separate controller and interrupted transfer invocation."
+  },
+  "ascent_recording": "validation/missions/transfer_ascent.jsonl.gz",
+  "training": "validation/missions/training.json",
+  "vacuum_diagnostic": "validation/missions/vacuum_diagnostic.json",
+  "artifacts": {
+    "validation/missions/check_vacuum.py": {
+      "sha256": "700e518d2a02619aa6b8a41ef0a388e1d3e06116fcb168c654accb37f1c32c1b",
+      "bytes": 9346
+    },
+    "validation/missions/mun_learned.json": {
+      "sha256": "105b35b10bd1f43396e3c090892f85401127b42d4b487e71c36fc7f6e79b4d7d",
+      "bytes": 9244
+    },
+    "validation/missions/mun_learned.jsonl.gz": {
+      "sha256": "0a285e85922b193cc37f3a87df898b2637d5a319e83cc011bd2f73e6901c0eae",
+      "bytes": 95102,
+      "uncompressed_sha256": "217ccf7b4e4666a64af54823fdff39a316c0e2035eef8e2da6e5022edd0fe597"
+    },
+    "validation/missions/mun_scripted_arrival.json": {
+      "sha256": "d78e7f2e66443cc7a7c24441e0de05cfc2ee9d7240bb73c17dd8bfb8578b22ff",
+      "bytes": 4618
+    },
+    "validation/missions/mun_scripted_arrival.jsonl.gz": {
+      "sha256": "2f35e7b6904d15c9cbbacac53b4035afebc376e5ff1f8a9c8327efd5178b50ac",
+      "bytes": 53162,
+      "uncompressed_sha256": "5247c26a05c7fd159c52b3631dfd6a3a14db5b8e467fadff6fccf1f9fee561b0"
+    },
+    "validation/missions/training.json": {
+      "sha256": "59e2a0f81330a167dd05c2eeb9fc37cfaf4eee7777aab21d43298f04ec1fb813",
+      "bytes": 87643
+    },
+    "validation/missions/transfer_ascent.jsonl.gz": {
+      "sha256": "7c8dc179a0c112aa64c0558c1e53fb53f832f3b2f67bebcc6a43effc13d1d2d0",
+      "bytes": 113955,
+      "uncompressed_sha256": "1af5a749fda1599ef7e04cb6ad77f98bbb0830ad0f2f5ac1d2714ed1c04f815d"
+    },
+    "validation/missions/vacuum_diagnostic.json": {
+      "sha256": "5c294d431c65dbf8a958d1b0042d43cb506c8e974ad77654a41191c781249101",
+      "bytes": 39926
+    },
+    "models/transfer_ascent_ppo.zip": {
+      "sha256": "1cd7a99cffbc00e56e5e6efe75d8e971127ab42fbf5c717ed0f1744690a4c182",
+      "bytes": 497326
+    },
+    "models/transfer_ascent_ppo.metadata.json": {
+      "sha256": "8c94dbec79cdaa0d81245b3adf434e3719b69848d62e30da1b85c68eec16511e",
+      "bytes": 7410
+    },
+    "models/moon_capture.zip": {
+      "sha256": "8be91bece6dee9188144f6a166eb49f1949639bb77fa7bef1b2cb3a0cd10547a",
+      "bytes": 653321
+    },
+    "models/moon_capture.metadata.json": {
+      "sha256": "10a219a9991e7dbbb3169f4249c6e2f4a82c8d558857f7bb32e6598a0d57eed0",
+      "bytes": 31322
+    },
+    "orbiter/configs/orbiter_rl_transfer.json": {
+      "sha256": "b1b7428789109b17170fb4d09ea12971fbe741d4e4aac3e0e3fb0a35bc8a49b6",
+      "bytes": 6552
+    },
+    "orbiter/data/stock_system.json": {
+      "sha256": "f7a525379520559efb4ecf529fb4f65ed45b0fa0f7063a66f0cd146d756823bd",
+      "bytes": 30388
+    },
+    "models/stock_capture_experimental.zip": {
+      "sha256": "a88f6350febc9449372a3f09befbc0f90ef2202d4793d08b567fe1d2ce5fe7fe",
+      "bytes": 653569
+    },
+    "models/stock_capture_experimental.metadata.json": {
+      "sha256": "0b4f74aadd0c7464edd7f84cd7017ad1c24523fd3b0b35bac1bf1bc2ddf8ae14",
+      "bytes": 31454
+    },
+    "validation/missions/stock_capture_nominal.json.gz": {
+      "sha256": "eb89b93b5e2cfdd8ad06e92801d35abf317165a1801498fc12e5a6f6d0751f23",
+      "bytes": 128252,
+      "uncompressed_sha256": "fecab0f8052bb59008e407c3df2292e4f7ec9907db3141f2c91d30ac572445fb"
+    },
+    "validation/missions/stock_capture_stress.json.gz": {
+      "sha256": "f7ceee3eb1fa0ebf1fc10b46298b94c5c48112f35d093cecbaba444c58eb6428",
+      "bytes": 137676,
+      "uncompressed_sha256": "d129445858fb17476f818960d33290fc7e155a3394a5cfdf1ad8be027e460af5"
+    },
+    "validation/missions/minmus_learned.json": {
+      "sha256": "d16168e539953c5283e39fccadffe49f65ae546827eea0a67272d5c15132ddd4",
+      "bytes": 20158
+    },
+    "validation/missions/minmus_learned.jsonl.gz": {
+      "sha256": "f40460858bff8e9b014dedf221ef475fd193ec7ead5f94056667d7c3f24da651",
+      "bytes": 246141,
+      "uncompressed_sha256": "06827316e012a0b46d4aaecdfa1108f6dbf4a4c9b7af52c1e07515227f3a3dc3"
+    },
+    "validation/missions/pad_reload_check.json": {
+      "sha256": "b9e31e9394e4ee03405eb908c707f61b1328088fa2ff36a63d1d6a9e5f401c37",
+      "bytes": 3150
+    },
+    "validation/missions/mun_panel_launch.json": {
+      "sha256": "e3cb424449d29bba2e0c6610476bafa5e74c8cc6c484b37e317b539aad2cc4fd",
+      "bytes": 21473
+    },
+    "validation/missions/mun_panel_launch.jsonl.gz": {
+      "sha256": "72d2d8605e5cafa31bda91f52bf5da20f1c00e59cbfd231fe54a4677baeb6f30",
+      "bytes": 209357,
+      "uncompressed_sha256": "921eb9fe14d61fe6c08093f18f893da499f446cea675bf36aeb8f4ce41729e46"
+    },
+    "validation/missions/mun_panel_launch.request.json": {
+      "sha256": "930c1dd9da6320eb1fdb0d48eec0bfcfbdf3b074e03c9ed3dd074bd6c9773041",
+      "bytes": 3317
+    },
+    "validation/missions/mun_panel_launch.status.json": {
+      "sha256": "e9aae77f58689ba51f2753f3a1fc27f1c0e2d6293e372b48f66c6ad7d3a8cc3d",
+      "bytes": 36958
+    },
+    "orbiter/data/transfer_vehicle.json": {
+      "sha256": "e1d80e9e50c17c19ac8800f732bca2f18a7fb0d66084973bcbafc271de9e3b32",
+      "bytes": 1673
+    },
+    "validation/missions/minmus_panel_pre_fix.json": {
+      "sha256": "4593a46dfdf10480948845f36476084d17e10b22c19f61682a081d1960bc9603",
+      "bytes": 13012
+    },
+    "validation/missions/minmus_panel_pre_fix.jsonl.gz": {
+      "sha256": "bffd5e3f94dae8285618fc6b1bc0abfd8106d100ca5ccfd6bfaf6d3575f508bd",
+      "bytes": 116935,
+      "uncompressed_sha256": "57cc2211e5a5df7fff4b1c0fd2a40f8e297816b7398c4e10dda7ad83d7ddaf53"
+    },
+    "validation/missions/minmus_panel_pre_fix.request.json": {
+      "sha256": "ce63c4a164408c19126d37cac97bb56900cec11647f2486f1c2c02156d285441",
+      "bytes": 3326
+    },
+    "validation/missions/minmus_panel_pre_fix.status.json": {
+      "sha256": "a316d99f7bc790342096f966b0b79d2b90538518366d94558499d7465fab746f",
+      "bytes": 21872
+    },
+    "validation/missions/minmus_node_diagnostic.json": {
+      "sha256": "7a8f152f39b83e9729743e49a28dbf5c9f7b4dee551b7d494e8b97e0d067d12e",
+      "bytes": 3795
+    },
+    "validation/missions/minmus_panel_launch.json": {
+      "sha256": "e2218a4f2f37dd31421de64e4decae0d16bacc913d7a119edf864392dfecce60",
+      "bytes": 22437
+    },
+    "validation/missions/minmus_panel_launch.jsonl.gz": {
+      "sha256": "7c57bf7d84933bfbed21297c6a86146ae2ebf2c6da55498776f6e3d898ee1854",
+      "bytes": 258928,
+      "uncompressed_sha256": "aeca7d2f79efa3db9fc628cf5a531d830bde605a081ef16c3abfeeffe83a82d2"
+    },
+    "validation/missions/minmus_panel_launch.request.json": {
+      "sha256": "e3ac02a18b521f8013821af72d3bf2e6f6fc5be7fd7f076a1a5c5e60ea4f7638",
+      "bytes": 3323
+    },
+    "validation/missions/minmus_panel_launch.status.json": {
+      "sha256": "077e741a6c1a0275b4450670dfb7c3d167af3d472776d53cd6e554067066a739",
+      "bytes": 39051
+    },
+    "validation/missions/mun_native_launch.json": {
+      "sha256": "ed1c3dd229c1030ce8d391d9071974068303bd413a027ad3ef0766e11483c098",
+      "bytes": 21456
+    },
+    "validation/missions/mun_native_launch.jsonl.gz": {
+      "sha256": "6e6cfa4dece1e08554145f4326582f8814ed658305935508b7b94c1d10544a89",
+      "bytes": 208041,
+      "uncompressed_sha256": "444cd8f0041a575f2185c59fe44bdd524c68c64c95804c0c0ab0d101593772c0"
+    },
+    "validation/missions/mun_native_launch.request.json": {
+      "sha256": "742fe2d96b2d97a23ffab78ed158e734fc02f3036af0e9ada6f36076352a37bc",
+      "bytes": 3318
+    },
+    "validation/missions/mun_native_launch.status.json": {
+      "sha256": "adef76680f27193b7eae2bcf4f18d80375a53094a1a13a0da259cf838a6ad539",
+      "bytes": 36987
+    },
+    "validation/missions/native_frontend.json": {
+      "sha256": "cf8c1ff95ff8d663d67ebd37b30f3d9c2a8c254bd487eac9306d0ed5ddbbf350",
+      "bytes": 1363
+    }
+  },
+  "pad_reload_check": "validation/missions/pad_reload_check.json",
+  "failed_attempts": [
+    {
+      "id": "minmus_panel_pre_fix",
+      "target": "Minmus",
+      "target_altitude": 60000,
+      "summary": "validation/missions/minmus_panel_pre_fix.json",
+      "recording": "validation/missions/minmus_panel_pre_fix.jsonl.gz",
+      "panel_request": "validation/missions/minmus_panel_pre_fix.request.json",
+      "panel_status": "validation/missions/minmus_panel_pre_fix.status.json",
+      "scope": "Pre-fix Run-button attempt. Learned ascent succeeded; a time-skewed inertial node readback falsely failed the direction guard before any departure burn. Controls released."
+    }
+  ],
+  "node_frame_diagnostic": "validation/missions/minmus_node_diagnostic.json",
+  "native_frontend_validation": "validation/missions/native_frontend.json"
+}

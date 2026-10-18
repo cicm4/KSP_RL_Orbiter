@@ -2,13 +2,66 @@
 from dataclasses import asdict
 import json
 import math
+import signal
+import time
 from types import SimpleNamespace
+from uuid import uuid4
 
 import numpy as np
 import pytest
 
 from orbiter.env import EnvConfig, HeadlessOrbiterEnv
 from orbiter import live
+
+
+def test_nested_rpc_longer_inner_cannot_extend_parent_deadline():
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        with live.rpc_deadline(.02):
+            with live.rpc_deadline(.08):
+                time.sleep(.2)
+    assert time.monotonic()-started < .06
+
+
+def test_nested_rpc_shorter_inner_keeps_its_own_deadline():
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        with live.rpc_deadline(.08):
+            with live.rpc_deadline(.02):
+                time.sleep(.2)
+    assert time.monotonic()-started < .06
+
+
+def test_nested_rpc_restores_elapsed_parent_timer_and_handler(monkeypatch):
+    now = [100.]
+    parent_handler = lambda signum, frame: None
+    current_handler = [parent_handler]
+    timer = [(.08,0.)]
+    def set_timer(which,seconds,interval=0.):
+        previous = timer[0]
+        timer[0] = (seconds,interval)
+        return previous
+    monkeypatch.setattr(live.time,'monotonic',lambda:now[0])
+    monkeypatch.setattr(live.signal,'getsignal',lambda number:current_handler[0])
+    monkeypatch.setattr(live.signal,'getitimer',lambda which:timer[0])
+    monkeypatch.setattr(live.signal,'signal',lambda number,handler:current_handler.__setitem__(0,handler))
+    monkeypatch.setattr(live.signal,'setitimer',set_timer)
+    with live.rpc_deadline(.02):
+        now[0] += .01
+    assert timer[0] == pytest.approx((.07,0.))
+    assert current_handler[0] is parent_handler
+
+
+def test_parent_deadline_is_not_restarted_when_it_expires_inside_inner_scope():
+    original_handler = signal.getsignal(signal.SIGALRM)
+    with live.rpc_deadline(.02):
+        with pytest.raises(TimeoutError):
+            with live.rpc_deadline(.08):
+                time.sleep(.2)
+        # The already-delivered parent alarm must not be restored for another
+        # interval if this caller deliberately catches its timeout.
+        assert signal.getitimer(signal.ITIMER_REAL)[0] == 0.
+    assert signal.getsignal(signal.SIGALRM) == original_handler
 
 
 class Resources:
@@ -476,7 +529,8 @@ def test_live_cli_reports_unsuccessful_flight_as_nonzero_exit(tmp_path, monkeypa
         success=reason == 'orbit_achieved', termination_reason=reason))
     output = tmp_path / 'flight.jsonl'
     status = live.main(['--fly', '--scripted', '--stage-plan', '3,2',
-                        '--fuel-stages', '2,1', '--output', str(output)])
+                        '--fuel-stages', '2,1', '--output', str(output),
+                        '--address', f'legacy-flight-test-{uuid4().hex}.invalid'])
     assert status == expected_exit
     assert json.loads(capsys.readouterr().out)['termination_reason'] == reason
     assert closed == [True]
@@ -488,8 +542,77 @@ def test_live_cli_inspection_succeeds_without_flight_success_field(monkeypatch, 
 
     monkeypatch.setattr(krpc, 'connect', lambda **kwargs: SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(live, 'inspect', lambda *args: dict(mode='inspect_only'))
-    assert live.main([]) == 0
+    assert live.main(['--address', f'legacy-inspection-test-{uuid4().hex}.invalid']) == 0
     assert json.loads(capsys.readouterr().out)['mode'] == 'inspect_only'
+
+
+def test_live_cli_busy_worker_is_rejected_before_model_or_rpc(tmp_path, monkeypatch, capsys):
+    import krpc
+    from uuid import uuid4
+    from orbiter.ownership import FlightOwnership
+
+    address = f'legacy-flight-test-{uuid4().hex}.invalid'
+    monkeypatch.setattr(live, 'load_controller', lambda *args: pytest.fail('Busy CLI loaded model'))
+    monkeypatch.setattr(krpc, 'connect', lambda **kwargs: pytest.fail('Busy CLI contacted RPC'))
+    with FlightOwnership(address):
+        status = live.main(['--fly', '--model', str(tmp_path/'unused.zip'),
+                            '--stage-plan', '3,2', '--fuel-stages', '2,1',
+                            '--address', address])
+    assert status == 1 and 'FlightOwnershipBusy' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('outcome', ['success', 'interrupt', 'close_error', 'log_close_error'])
+def test_live_cli_holds_ownership_through_models_and_cleanup(tmp_path, monkeypatch, outcome):
+    import krpc
+    from uuid import uuid4
+    from orbiter.ownership import flight_busy
+
+    address = f'legacy-flight-test-{uuid4().hex}.invalid'
+    observed = []
+    model_path = tmp_path/'model.zip'
+    model_path.write_bytes(b'fake')
+
+    def load(*args):
+        observed.append(('model', flight_busy(address)))
+        return SimpleNamespace(num_timesteps=1), EnvConfig()
+
+    def close():
+        observed.append(('close', flight_busy(address)))
+        if outcome == 'close_error':
+            raise RuntimeError('test connection close')
+
+    def fly(*args, **kwargs):
+        observed.append(('fly', flight_busy(address)))
+        if outcome == 'interrupt':
+            raise KeyboardInterrupt
+        return dict(success=True)
+
+    class Recording:
+        def __init__(self, path):
+            pass
+        def write(self, *args, **kwargs):
+            pass
+        def close(self):
+            observed.append(('log_close', flight_busy(address)))
+            if outcome == 'log_close_error':
+                raise OSError('test log close')
+
+    monkeypatch.setattr(live, 'load_controller', load)
+    monkeypatch.setattr(live, 'FlightLog', Recording)
+    monkeypatch.setattr(live, 'fly', fly)
+    monkeypatch.setattr(krpc, 'connect', lambda **kwargs: SimpleNamespace(close=close))
+    args = ['--fly', '--model', str(model_path), '--stage-plan', '3,2',
+            '--fuel-stages', '2,1', '--address', address]
+    if outcome == 'interrupt':
+        with pytest.raises(KeyboardInterrupt):
+            live.main(args)
+    elif outcome == 'log_close_error':
+        with pytest.raises(OSError, match='log close'):
+            live.main(args)
+    else:
+        assert live.main(args) == 0
+    assert observed == [('model', True), ('fly', True), ('log_close', True), ('close', True)]
+    assert not flight_busy(address)
 
 def test_initial_flight_vessel_rpc_has_a_deadline_before_controls_are_owned(monkeypatch):
     from contextlib import contextmanager

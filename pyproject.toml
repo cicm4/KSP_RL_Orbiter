@@ -5,8 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ksp-rl-orbiter"
 version = "0.1.0"
-description = "Headless orbital launch learning and external KSP flight validation"
+description = "Headless ascent and capture learning with external KSP mission validation"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -28,6 +30,11 @@ dev = ["pytest>=9.1.1,<10", "build>=1.2,<2"]
 
 [project.scripts]
 orbiter-train = "orbiter.train:main"
+orbiter-train-capture = "orbiter.train_capture:cli_main"
+orbiter-train-generalized = "orbiter.train_generalized:main"
+orbiter-mission = "orbiter.mission_live:main"
+orbiter-control = "orbiter.control:main"
+orbiter-mod = "orbiter.mod:main"
 orbiter-capture = "orbiter.capture:main"
 orbiter-calibrate = "orbiter.calibrate:main"
 orbiter-fit-aero = "orbiter.fit_aero:main"
@@ -44,7 +51,7 @@ packages = ["orbiter"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-orbiter = ["configs/*.json", "ksp_bootstrap.cs"]
+orbiter = ["configs/*.json", "data/*.json", "control.html", "ksp_bootstrap.cs", "ksp_autopilot.cs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -161,21 +161,135 @@ def make_terrier_craft(source: str, terrier_source: str) -> str:
     return prefix + ''.join(blocks)
 
 
+def _attachment_peer(block, node):
+    match = re.search(rf'^\tattN = {node},([^\n]+)', block, re.MULTILINE)
+    if not match:
+        raise ValueError(f'Missing {node} attachment in craft part')
+    return match.group(1).rsplit('_', 1)[0]
+
+
+def _set_attachment_peer(block, node, peer):
+    result, count = re.subn(rf'^(\tattN = {node},)[^\n]+_([^_\n]+)$',
+                            lambda match: match.group(1)+peer+'_'+match.group(2),
+                            block, flags=re.MULTILINE)
+    if count != 1:
+        raise ValueError(f'Expected one {node} attachment in craft part')
+    return result
+
+
+def make_transfer_craft(source: str) -> str:
+    """Add two stock FL-T200 snapshots to OrbiterRL Terrier's upper stack.
+
+    This preserves the crew pod and the sequential Swivel/Terrier stage plan.
+    Two 125 kg dry / 1000 kg propellant tanks extend the upper stage without
+    editing stock assets or changing the existing lower-stage resource groups.
+    """
+    prefix, blocks = _split_parts(source)
+    if not re.search(r'^ship = OrbiterRL Terrier$', prefix, re.MULTILINE) or len(blocks) != 18:
+        raise ValueError('Expected the 18-part OrbiterRL Terrier source craft')
+    parts = {_part_id(block): block for block in blocks}
+    if len(parts) != len(blocks):
+        raise ValueError('Source craft contains duplicate part IDs')
+    engines = [identifier for identifier in parts if identifier.startswith('liquidEngine3.v2_')]
+    if len(engines) != 1:
+        raise ValueError('Expected exactly one upper Terrier engine')
+    engine_id = engines[0]
+    engine = parts[engine_id]
+    tank_id = _attachment_peer(engine, 'top')
+    if tank_id not in parts or not tank_id.startswith('fuelTankSmall_'):
+        raise ValueError('The upper Terrier must attach below an FL-T200 tank')
+    tank = parts[tank_id]
+    if re.findall(r'^\tlink = (\S+)', tank, re.MULTILINE) != [engine_id]:
+        raise ValueError('The cloned upper tank must have only the Terrier child')
+    top, bottom = _attachment_vector(tank, 'top'), _attachment_vector(tank, 'bottom')
+    if any(abs(v) > 1e-5 for v in (*top[::2], *bottom[::2])) or top[1] <= bottom[1]:
+        raise ValueError('Only coaxial vertical tank stacks are supported')
+    resources = dict(re.findall(r'\tRESOURCE\n\t\{\n\t\tname = (\S+)\n\t\tamount = ([^\n]+)', tank))
+    if resources != {'LiquidFuel': '90', 'Oxidizer': '110'}:
+        raise ValueError('Expected a full stock FL-T200 with 90 LiquidFuel and 110 Oxidizer')
+    persistent_ids = re.findall(r'^\tpersistentId = (\d+)$', source, re.MULTILINE)
+    if len(persistent_ids) != len(blocks) or len(set(persistent_ids)) != len(blocks):
+        raise ValueError('Every source part needs a unique persistentId')
+    used = {int(identifier.rsplit('_', 1)[1]) for identifier in parts}
+    used.update(map(int, persistent_ids))
+    new_numbers, candidate = [], (max(used)+1) % (2**32)
+    while len(new_numbers) < 4:
+        if candidate != 0 and candidate not in used:
+            new_numbers.append(candidate)
+            used.add(candidate)
+        candidate = (candidate+1) % (2**32)
+    new_ids = ['fuelTankSmall_'+str(value) for value in new_numbers[:2]]
+    height, shift = top[1]-bottom[1], -2*(top[1]-bottom[1])
+    descendants, pending = set(), [engine_id]
+    while pending:
+        identifier = pending.pop()
+        if identifier in descendants or identifier not in parts:
+            raise ValueError('Invalid lower craft attachment tree')
+        descendants.add(identifier)
+        pending.extend(re.findall(r'^\tlink = (\S+)', parts[identifier], re.MULTILINE))
+    clones = []
+    for index, new_id in enumerate(new_ids):
+        clone = tank.replace(f'\tpart = {tank_id}\n', f'\tpart = {new_id}\n')
+        clone = re.sub(r'^\tpersistentId = \d+$', f'\tpersistentId = {new_numbers[index+2]}',
+                       clone, flags=re.MULTILINE)
+        position = list(_vector(tank, 'pos'))
+        position[1] -= height*(index+1)
+        clone = _set_vector(clone, 'pos', position)
+        clone = _set_vector(clone, 'attPos0', (0., -height, 0.))
+        parent = tank_id if index == 0 else new_ids[index-1]
+        child = new_ids[index+1] if index+1 < len(new_ids) else engine_id
+        clone = _set_attachment_peer(clone, 'top', parent)
+        clone = _set_attachment_peer(clone, 'bottom', child)
+        clone = clone.replace(f'\tlink = {engine_id}\n', f'\tlink = {child}\n')
+        clones.append(clone)
+    rebuilt = []
+    for block in blocks:
+        identifier = _part_id(block)
+        if identifier == tank_id:
+            block = block.replace(f'\tlink = {engine_id}\n', f'\tlink = {new_ids[0]}\n')
+            block = _set_attachment_peer(block, 'bottom', new_ids[0])
+        if identifier in descendants:
+            position = list(_vector(block, 'pos'))
+            position[1] += shift
+            block = _set_vector(block, 'pos', position)
+            if identifier == engine_id:
+                block = _set_attachment_peer(block, 'top', new_ids[-1])
+                parent_position = _vector(clones[-1], 'pos')
+                block = _set_vector(block, 'attPos0', tuple(a-b for a, b in zip(position, parent_position)))
+        rebuilt.append(block)
+        if identifier == tank_id:
+            rebuilt.extend(clones)
+    prefix = re.sub(r'^ship = .*$', 'ship = OrbiterRL Transfer', prefix, flags=re.MULTILINE)
+    prefix = re.sub(r'^description = .*$',
+                    'description = Crewed Swivel/Terrier transfer craft with four upper FL-T200 tanks; sequential stages 3 and 2.',
+                    prefix, flags=re.MULTILINE)
+    size = re.search(r'^size = ([^\n]+)$', prefix, re.MULTILINE)
+    if size:
+        dimensions = [float(value) for value in size.group(1).split(',')]
+        dimensions[1] -= shift
+        prefix = prefix[:size.start(1)]+','.join(f'{v:.10g}' for v in dimensions)+prefix[size.end(1):]
+    return prefix + ''.join(rebuilt)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--terrier-template', type=Path,
-                        help='Stock craft containing exactly one Terrier (for example Science Jr.craft)')
+    variant = parser.add_mutually_exclusive_group()
+    variant.add_argument('--terrier-template', type=Path,
+                         help='Stock craft containing exactly one Terrier (for example Science Jr.craft)')
+    variant.add_argument('--transfer', action='store_true',
+                         help='Source is OrbiterRL Terrier; insert two additional upper FL-T200 tanks')
     args = parser.parse_args()
     # KSP's legacy stock craft uses a non-UTF8 description separator.
     source = args.source.read_text(errors='replace')
-    result = (make_terrier_craft(source, args.terrier_template.read_text(errors='replace'))
+    result = (make_transfer_craft(source) if args.transfer else
+              make_terrier_craft(source, args.terrier_template.read_text(errors='replace'))
               if args.terrier_template else make_liquid_craft(source))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open('x') as handle:
         handle.write(result)
-    print(f'Created {args.output}: 18 parts; activation stages 3 (launch), 2 (separate/ignite).')
+    print(f'Created {args.output}: {20 if args.transfer else 18} parts; activation stages 3 (launch), 2 (separate/ignite).')
 
 
 if __name__ == '__main__':

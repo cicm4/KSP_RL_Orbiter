@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Orbiter Autopilot</title>
+  <style>
+    :root { color-scheme: light dark; --ground: light-dark(#f5f4f0,#14181b); --surface: light-dark(#fff,#20262a); --ink: light-dark(#182523,#edf1ef); --muted: light-dark(#51615b,#b3c0ba); --line: light-dark(#c7cfca,#46534d); --accent: light-dark(#145b47,#99e6c4); --on-accent: light-dark(#fff,#12382a); --danger: light-dark(#9d292b,#ffacaa); --focus: light-dark(#186e9b,#a9d9f3); }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--ground); color: var(--ink); font: 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width: min(760px,100%); margin: 40px auto; padding: 0 24px 32px; }
+    h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 12px; }
+    h2 { font-size: 20px; line-height: 1.3; margin: 0 0 10px; }
+    p { margin: 0 0 16px; max-width: 68ch; }
+    .secondary, small { color: var(--muted); }
+    small, .caption { font-size: 13px; }
+    header { margin-bottom: 32px; }
+    section { margin-top: 28px; }
+    .connection { display: flex; gap: 8px; align-items: center; color: var(--muted); margin: 24px 0 8px; }
+    .dot { height: 8px; width: 8px; border-radius: 50%; background: currentColor; flex: none; }
+    .connected { color: var(--accent); }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    input, select, button { font: inherit; color: inherit; }
+    input, select { display: block; width: 100%; min-height: 46px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); accent-color: var(--accent); caret-color: var(--accent); }
+    input:invalid:not(:placeholder-shown) { border-color: var(--danger); }
+    .field-help { display: block; margin-top: 6px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 12px; }
+    button { min-height: 46px; border: 1px solid var(--line); border-radius: 6px; padding: 10px 24px; background: var(--surface); font-weight: 600; cursor: pointer; transition: background-color .16s ease-out; }
+    button:hover:enabled { background: color-mix(in srgb,var(--ink) 8%,var(--surface)); }
+    #run { color: var(--on-accent); border-color: var(--accent); background: var(--accent); min-width: 144px; }
+    #run:hover:enabled { background: color-mix(in srgb,var(--accent) 90%,var(--ink)); }
+    #stop { color: var(--danger); }
+    :disabled { opacity: .55; cursor: not-allowed; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    ::selection { background: var(--accent); color: var(--on-accent); }
+    .notice { margin: 0; min-height: 24px; }
+    .error { color: var(--danger); }
+    .status { border-top: 1px solid var(--line); padding-top: 24px; }
+    .journey { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; padding: 0; margin: 24px 0; list-style: none; }
+    .journey li { color: var(--muted); border-top: 2px solid var(--line); padding-top: 10px; }
+    .journey li.current { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .journey li.done { color: var(--ink); }
+    .phase-number { font-size: 13px; display: block; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+    dl { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin: 20px 0; }
+    dt { color: var(--muted); font-size: 13px; margin-bottom: 3px; }
+    dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    #details { overflow-wrap: anywhere; }
+    #result { margin-top: 16px; }
+    footer { border-top: 1px solid var(--line); margin-top: 32px; padding-top: 16px; color: var(--muted); font-size: 13px; }
+    [hidden] { display: none !important; }
+    @media(max-width:540px) { main { margin: 24px auto; padding-inline: 18px; } .fields { grid-template-columns: 1fr; gap: 16px; } .journey { grid-template-columns: 1fr; gap: 8px; } .journey li { border-top: 0; border-bottom: 1px solid var(--line); padding: 5px 0 9px; } .phase-number { display: inline-block; width: 24px; margin: 0; } dl { grid-template-columns: 1fr 1fr; } }
+    @media(prefers-reduced-motion:reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Orbiter Autopilot</h1>
+    <p class="secondary">Choose your destination. Run flies the ship on the launchpad through ascent, transfer, and capture, then checks one complete orbit.</p>
+    <div id="connection" class="connection"><span class="dot" aria-hidden="true"></span><span id="connection-text">Connecting to KSP…</span></div>
+    <p id="ship" class="caption secondary">Place the OrbiterRL Transfer rocket on Kerbin’s launchpad with kRPC running.</p>
+  </header>
+  <form id="mission-form">
+    <div class="fields">
+      <div><label for="destination">Destination</label><select id="destination" name="target" disabled><option value="Mun">Mun</option><option value="Minmus">Minmus</option></select><small class="field-help">Supported launchpad destinations</small></div>
+      <div><label for="altitude">Orbit altitude (km)</label><input id="altitude" name="altitude" type="number" min="40" max="60" step="1" value="50" required disabled><small class="field-help">40–60 km above the selected body</small></div>
+    </div>
+    <div class="actions"><button id="run" type="submit" disabled>Run</button><button id="stop" type="button" disabled>Stop</button></div>
+    <p id="notice" class="notice secondary" aria-live="polite">Checking the active ship…</p>
+    <p id="request-error" class="error" role="alert" hidden></p>
+  </form>
+  <section class="status" aria-labelledby="status-title">
+    <div role="status" aria-live="polite" aria-atomic="true">
+      <h2 id="status-title">Ready when your ship is</h2>
+      <p id="details" class="secondary">The active ship will be checked before Run becomes available.</p>
+    </div>
+    <ol class="journey" aria-label="Mission phases">
+      <li data-phase="0"><span class="phase-number">1</span>Launch</li>
+      <li data-phase="1"><span class="phase-number">2</span>Parking orbit</li>
+      <li data-phase="2"><span class="phase-number">3</span>Transfer</li>
+      <li data-phase="3"><span class="phase-number">4</span>Capture</li>
+      <li data-phase="4"><span class="phase-number">5</span>Verify orbit</li>
+    </ol>
+    <dl id="telemetry" hidden><div><dt>Reported body</dt><dd id="body-value">—</dd></div><div><dt>Periapsis</dt><dd id="periapsis-value">—</dd></div><div><dt>Apoapsis</dt><dd id="apoapsis-value">—</dd></div></dl>
+    <p id="sample-time" class="caption secondary" hidden></p>
+    <p id="result" aria-live="polite" hidden></p>
+  </section>
+  <footer>Uses the 20-part OrbiterRL Transfer rocket and its matched policies. Other ships and interplanetary destinations are not supported by this control panel. Stop releases the controls back to KSP.</footer>
+</main>
+<script>
+(() => {
+  'use strict';
+  const byId = id => document.getElementById(id);
+  const ui = Object.fromEntries(['connection','connection-text','ship','destination','altitude','run','stop','notice','request-error','status-title','details','telemetry','sample-time','body-value','periapsis-value','apoapsis-value','result'].map(id => [id,byId(id)]));
+  let session = null, current = null, pending = false, pollTimer = null, pollError = false;
+  const number = value => typeof value === 'number' && Number.isFinite(value);
+  const km = value => number(value) ? `${(value / 1000).toFixed(2)} km` : '—';
+  const errorText = error => typeof error === 'string' ? error : error?.message || JSON.stringify(error);
+  const phaseIndex = phase => {
+    const value = String(phase || '').toLowerCase();
+    if (/verif|independent|coast.*orbit/.test(value)) return 4;
+    if (/capture/.test(value)) return 3;
+    if (/parking|plan|encounter/.test(value)) return 1;
+    if (/transfer|depart|maneuver|soi|approach/.test(value)) return 2;
+    if (/launch|ascent/.test(value)) return 0;
+    return -1;
+  };
+  async function api(path, payload) {
+    const options = {headers:{Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(25000)};
+    if (payload !== undefined) { options.method='POST'; options.headers['Content-Type']='application/json'; options.headers['X-Orbiter-CSRF']=session.csrf_token; options.body=JSON.stringify(payload); }
+    const response = await fetch(path,options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+    return data;
+  }
+  function showError(error) { ui['request-error'].hidden = !error; ui['request-error'].textContent = error ? errorText(error) : ''; }
+  function render(status) {
+    current = status;
+    const active = Boolean(status.active), check = status.preflight || {}, mission = status.mission;
+    ui.connection.classList.toggle('connected', !status.error || active);
+    ui['connection-text'].textContent = active ? 'Flight controller connected' : check.ready ? 'KSP connected · ship ready' : 'Checking launch readiness';
+    ui.ship.textContent = check.vessel ? `Active ship: ${check.vessel}` : 'Place the OrbiterRL Transfer rocket on Kerbin’s launchpad with kRPC running.';
+    if (active && mission) {
+      ui.destination.value = mission.target;
+      if (number(mission.target_altitude_m)) ui.altitude.value = mission.target_altitude_m / 1000;
+    }
+    ui.destination.disabled = ui.altitude.disabled = active || pending || !session;
+    ui.run.disabled = pending || active || !status.can_run || !ui.altitude.checkValidity();
+    ui.stop.disabled = !active || status.state === 'stopping' || pending;
+    ui.run.textContent = active ? 'Running' : pending ? 'Starting…' : 'Run';
+    ui.stop.textContent = status.state === 'stopping' || pending && active ? 'Stopping…' : 'Stop';
+    const failures = (check.failures || []).map(errorText);
+    ui.notice.textContent = active ? 'Automatic staging and time warp are active. You can stop the controller at any time.' : status.can_run ? 'Ready. Run starts the active ship on the pad.' : failures.join(' ') || (status.model_errors || []).map(errorText).join(' ') || status.error || 'Waiting for a compatible ship on the launchpad.';
+    let title = 'Ready when your ship is', details = failures.join(' ') || 'The active ship will be checked before Run becomes available.';
+    if (status.can_run) { title = 'Ready to launch'; details = `Destination: ${ui.destination.value} · target orbit ${ui.altitude.value} km.`; }
+    if (active) { title = status.state === 'stopping' ? 'Releasing controls…' : `Flying to ${mission?.target || ui.destination.value}`; details = String(status.phase || 'Starting flight').replaceAll('_',' '); }
+    if (status.state === 'succeeded') { title = `Orbit verified at ${mission?.target || 'destination'}`; details = 'The complete launchpad flight and one full orbital period passed. Controls are released.'; }
+    if (status.state === 'failed') { title = 'Flight stopped before verification'; details = status.error || mission?.result?.error || 'See the flight recording for the last completed phase.'; }
+    if (status.state === 'stopped') { title = 'Controller stopped'; details = 'Flight completion was not verified. Check the ship in KSP before starting another mission.'; }
+    if (ui['status-title'].textContent !== title) ui['status-title'].textContent = title;
+    if (ui.details.textContent !== details) ui.details.textContent = details;
+    const phase = status.state === 'succeeded' ? 5 : phaseIndex(status.phase);
+    document.querySelectorAll('[data-phase]').forEach(item => { const index=Number(item.dataset.phase); item.classList.toggle('current',active && index===phase); item.classList.toggle('done',index<phase); if(active && index===phase) item.setAttribute('aria-current','step'); else item.removeAttribute('aria-current'); });
+    const telemetry = status.telemetry || {}, orbit = mission?.result?.mission?.capture?.final_orbit || telemetry.actual_orbit || telemetry;
+    const periapsis = orbit.periapsis ?? orbit.periapsis_altitude, apoapsis = orbit.apoapsis ?? orbit.apoapsis_altitude;
+    ui.telemetry.hidden = !orbit.body && !number(periapsis) && !number(apoapsis);
+    ui['body-value'].textContent = orbit.body || check.body || '—'; ui['periapsis-value'].textContent = km(periapsis); ui['apoapsis-value'].textContent = km(apoapsis);
+    ui['sample-time'].hidden = ui.telemetry.hidden;
+    const finalOrbit = Boolean(mission?.result?.mission?.capture?.final_orbit);
+    const source = finalOrbit ? 'capture result' : String(telemetry.phase || telemetry.event || 'flight recording').replaceAll('_',' ');
+    const age = number(telemetry.wall_time) && !finalOrbit ? ` · ${Math.max(0, Math.round(Date.now()/1000-telemetry.wall_time))} s ago` : '';
+    ui['sample-time'].textContent = `Latest recorded sample: ${source}${age}.`;
+    ui.result.hidden = !mission?.result;
+    const coast = mission?.result?.mission?.independent_coast;
+    ui.result.textContent = status.state==='succeeded' && coast?.success ? `Verified for ${(coast.observed_coast_s / 60).toFixed(1)} minutes at zero throttle.` : '';
+  }
+  async function poll() {
+    try { if (!session) { session=await api('/api/session'); const range=session.altitude; if(range) {ui.altitude.min=range.minimum_m/1000;ui.altitude.max=range.maximum_m/1000;} } const status=await api('/api/status'); if(pollError)showError(null);pollError=false;render(status); }
+    catch(error) { pollError=true;ui.connection.classList.remove('connected'); ui['connection-text'].textContent='Control panel connection unavailable'; ui.run.disabled=true; ui.notice.textContent='Reconnect to this local control panel. An active flight continues in KSP while the panel is disconnected.'; showError(error); }
+    finally { pollTimer=setTimeout(poll,1500); }
+  }
+  byId('mission-form').addEventListener('submit',async event => {
+    event.preventDefault(); if(pending || !current?.can_run || !ui.altitude.reportValidity()) return;
+    pending=true;showError(null);render(current);
+    try { await api('/api/run',{target:ui.destination.value,target_altitude_m:Number(ui.altitude.value)*1000}); current=await api('/api/status'); }
+    catch(error) { showError(error); }
+    finally {pending=false;render(current);}
+  });
+  ui.stop.addEventListener('click',async () => {
+    if(!current?.active || pending) return;
+    pending=true;showError(null);render(current);
+    try {await api('/api/stop',{});current=await api('/api/status');} catch(error) {showError(error);} finally {pending=false;render(current);}
+  });
+  [ui.destination,ui.altitude].forEach(element=>element.addEventListener('input',()=>{if(current)render(current);}));
+  window.addEventListener('pagehide',()=>clearTimeout(pollTimer));
+  poll();
+})();
+</script>
+</body>
+</html>

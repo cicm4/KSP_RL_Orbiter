@@ -1,0 +1,108 @@
+{
+  "source": "actual_ksp_krpc",
+  "success": true,
+  "scope": "Separate saved-pad reload consistency check, followed by restoration of the validated Minmus orbit.",
+  "pad_check": {
+    "snapshot_state_consistent": true,
+    "loaded_state": {
+      "ut": 37293.518388667704,
+      "stage": 4,
+      "latitude": -0.09720546057783234,
+      "longitude": -74.55767601725586,
+      "altitude": 86.50672678090632,
+      "altitude_reference": "root_part_origin",
+      "mean_altitude": 79.72757141210604,
+      "crew": [
+        "Valentina Kerman"
+      ],
+      "part_names": [
+        "Decoupler.1",
+        "Decoupler.1",
+        "basicFin",
+        "basicFin",
+        "basicFin",
+        "basicFin",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "liquidEngine2",
+        "liquidEngine3.v2",
+        "mk1pod.v2",
+        "parachuteSingle"
+      ],
+      "mu": 3531599999999.9995,
+      "radius": 600000.0
+    },
+    "tolerances": {
+      "ut_before_seconds": 1.0,
+      "ut_after_load_wall_seconds": 5.0,
+      "geographic_degrees": 0.001,
+      "altitude_metres": 5.0,
+      "body_relative": 0.01
+    },
+    "scope": "Local unique basename and loaded pad-state consistency, not cryptographic loaded-file identity."
+  },
+  "snapshot": {
+    "name": "OrbiterRL-pad-transfer-minmus-01",
+    "path": "/Users/cicm/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/saves/OrbiterRL/OrbiterRL-pad-transfer-minmus-01.sfs",
+    "sha256": "f5d8c3441c8edb7df2f898fef67b59cd2c14078d27202bdcb0f52837b5f6c437",
+    "vessel_name": "OrbiterRL Transfer",
+    "state": {
+      "ut": 37291.758388667986,
+      "stage": 4,
+      "latitude": -0.09720556329246235,
+      "longitude": -74.55767511735549,
+      "altitude": 86.50665373238735,
+      "crew": [
+        "Valentina Kerman"
+      ],
+      "part_names": [
+        "Decoupler.1",
+        "Decoupler.1",
+        "basicFin",
+        "basicFin",
+        "basicFin",
+        "basicFin",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "fuelTankSmall",
+        "liquidEngine2",
+        "liquidEngine3.v2",
+        "mk1pod.v2",
+        "parachuteSingle"
+      ]
+    },
+    "hash_scope": "Validated local file; exact serialized loaded-file identity is not exposed by kRPC."
+  },
+  "cleanup_errors": [],
+  "restored_orbit": {
+    "ut": 276734.44816421135,
+    "body": "Minmus",
+    "vessel": "OrbiterRL Transfer",
+    "apoapsis": 54882.341338800354,
+    "periapsis": 49569.841491484316,
+    "eccentricity": 0.023668737725455715,
+    "semi_major_axis": 112226.09141514233,
+    "energy": -7867.154616391717,
+    "period": 5621.46958674669,
+    "throttle": 0.0,
+    "situation": "VesselSituation.orbiting"
+  },
+  "restored_nodes": 0,
+  "restored_rails_warp_factor": 0,
+  "restored_physics_warp_factor": 0
+}
