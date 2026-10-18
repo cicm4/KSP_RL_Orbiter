@@ -217,7 +217,8 @@ existing input weights and add two zero-weight aerodynamic inputs:
 
 This starts a new task with recorded parent ancestry, not a restored training
 session. PPO records approximate KL, clipping, action standard deviation and
-optimization epochs; the KL limit can stop additional epochs after each pass.
+optimization epochs; the KL limit is checked before each optimizer step and
+can stop the remaining minibatches.
 Validation frequency is configurable so evaluation need not dominate training.
 
 This is an ascent curriculum for feasible sequential liquid rockets, with

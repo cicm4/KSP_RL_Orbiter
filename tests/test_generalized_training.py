@@ -179,11 +179,22 @@ def test_ppo_only_retains_weights_and_records_new_transition_ancestry(
     assert not summary["live_ksp_validated"]
 
 
-def test_ppo_kl_guard_stops_repeated_epochs_on_large_policy_change():
+def test_ppo_kl_guard_stops_before_more_optimizer_steps_on_large_policy_change(
+    monkeypatch,
+):
     torch.manual_seed(16)
     model = training.VehiclePolicy(16)
     env = training.BatchedAscent(8, seed=16, max_time=4)
     events = []
+    optimizer_steps = 0
+    original_step = torch.optim.Adam.step
+
+    def counted_step(optimizer, *args, **kwargs):
+        nonlocal optimizer_steps
+        optimizer_steps += 1
+        return original_step(optimizer, *args, **kwargs)
+
+    monkeypatch.setattr(torch.optim.Adam, "step", counted_step)
     training.ppo_train(
         model,
         env,
@@ -199,3 +210,9 @@ def test_ppo_kl_guard_stops_repeated_epochs_on_large_policy_change():
     assert events[0]["optimization_epochs"] == 1
     assert events[0]["approximate_kl"] > 1e-8
     assert 0 <= events[0]["clip_fraction"] <= 1
+    # A single epoch has four optimizer minibatches. A late epoch-only check
+    # lets all four mutate the actor after it has already exceeded its budget.
+    assert 0 < optimizer_steps < 4
+    assert events[0]["optimization_minibatches"] == optimizer_steps
+    assert events[0]["checked_minibatches"] == optimizer_steps + 1
+    assert events[0]["kl_check"] == "before_minibatch_optimizer_step"

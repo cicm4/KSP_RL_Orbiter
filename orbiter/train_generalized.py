@@ -489,11 +489,11 @@ def ppo_train(
         total_loss = torch.zeros((), device=env.device)
         total_kl = torch.zeros_like(total_loss)
         total_clipped = torch.zeros_like(total_loss)
+        maximum_kl = torch.zeros_like(total_loss)
+        checked_batches = 0
         loss_count = 0
         early_stopped = False
         for epoch in range(4):
-            epoch_kl = torch.zeros_like(total_loss)
-            epoch_batches = 0
             permutation = torch.randperm(len(returns), device=env.device)
             for selected in permutation.split(batch_size):
                 distribution = model.distribution(flat["obs"][selected])
@@ -504,6 +504,23 @@ def ppo_train(
                 ).sum(-1)
                 log_ratio = logp - flat["logp"][selected]
                 ratio = log_ratio.exp()
+                approximate_kl = ((ratio - 1) - log_ratio).detach().mean()
+                total_kl += approximate_kl
+                maximum_kl = torch.maximum(maximum_kl, approximate_kl)
+                total_clipped += ((ratio - 1).abs() > 0.2).float().mean().detach()
+                checked_batches += 1
+                # Check before applying another optimizer step. Waiting for a
+                # complete epoch permits 64 updates at the production batch size
+                # and allowed the higher-rate pilot to overshoot substantially.
+                if target_kl is not None:
+                    measured_kl = float(approximate_kl)
+                    if not math.isfinite(measured_kl):
+                        raise FloatingPointError(
+                            "PPO update produced a nonfinite KL divergence"
+                        )
+                    if measured_kl > target_kl:
+                        early_stopped = True
+                        break
                 actor_loss = -torch.minimum(
                     ratio * advantage[selected],
                     ratio.clamp(0.8, 1.2) * advantage[selected],
@@ -516,22 +533,17 @@ def ppo_train(
                 nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 optimizer.step()
                 total_loss += loss.detach()
-                approximate_kl = ((ratio - 1) - log_ratio).detach().mean()
-                total_kl += approximate_kl
-                epoch_kl += approximate_kl
-                total_clipped += ((ratio - 1).abs() > 0.2).float().mean().detach()
-                epoch_batches += 1
                 loss_count += 1
-            # One synchronization per epoch, rather than per minibatch, keeps
-            # the safety check cheap with GPU-resident million-step rollouts.
-            mean_epoch_kl = float(epoch_kl / epoch_batches)
-            if not math.isfinite(mean_epoch_kl):
+            if not math.isfinite(float(maximum_kl)):
                 raise FloatingPointError(
                     "PPO update produced a nonfinite KL divergence"
                 )
-            if target_kl is not None and mean_epoch_kl > target_kl:
-                early_stopped = True
+            if early_stopped:
                 break
+        if not loss_count:
+            raise FloatingPointError(
+                "PPO rejected the unchanged rollout policy before its first step"
+            )
         transitions += horizon * env.count
         _PHASE_PROGRESS.update(
             phase="ppo", completed_updates=update + 1, ppo_transitions=transitions
@@ -544,10 +556,14 @@ def ppo_train(
             completed_episodes=int(episode_count),
             completed_successes=int(successes),
             loss=float(total_loss / loss_count),
-            approximate_kl=float(total_kl / loss_count),
-            clip_fraction=float(total_clipped / loss_count),
+            approximate_kl=float(total_kl / checked_batches),
+            maximum_minibatch_kl=float(maximum_kl),
+            clip_fraction=float(total_clipped / checked_batches),
+            checked_minibatches=checked_batches,
+            optimization_minibatches=loss_count,
             optimization_epochs=epoch + 1,
             kl_early_stop=early_stopped,
+            kl_check="before_minibatch_optimizer_step",
             action_std=model.log_std.detach().exp().cpu().tolist(),
             elapsed_s=time.monotonic() - start,
         )
@@ -902,6 +918,15 @@ def main(argv=None):
         ppo_transitions=0,
         seed=args.seed,
         selected_phase="initial",
+        ppo_optimization=dict(
+            learning_rate=args.learning_rate,
+            target_kl=args.target_kl,
+            kl_check="before_minibatch_optimizer_step",
+            maximum_epochs=4,
+            batch_size=args.batch_size,
+            worlds=args.worlds,
+            horizon=args.horizon,
+        ),
     )
 
     def save_interrupted():
