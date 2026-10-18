@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ksp-rl-orbiter"
+version = "0.1.0"
+description = "Headless orbital launch learning and external KSP flight validation"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+]
+dependencies = [
+  "numpy>=2.5.4,<3",
+  "gymnasium>=1.4,<2",
+]
+
+[project.optional-dependencies]
+train = [
+  "torch>=2.14.1,<3",
+  "stable-baselines3>=2.9,<3",
+  "sb3-contrib>=2.9,<3",
+]
+ksp = ["krpc>=0.6,<0.7"]
+dev = ["pytest>=9.1.1,<10", "build>=1.2,<2"]
+
+[project.scripts]
+orbiter-train = "orbiter.train:main"
+orbiter-capture = "orbiter.capture:main"
+orbiter-calibrate = "orbiter.calibrate:main"
+orbiter-fit-aero = "orbiter.fit_aero:main"
+orbiter-live = "orbiter.live:main"
+orbiter-validate = "orbiter.validate:main"
+orbiter-make-craft = "orbiter.make_craft:main"
+orbiter-bootstrap = "orbiter.bootstrap:main"
+
+[project.urls]
+Repository = "https://github.com/cicm4/KSP_RL_Orbiter"
+
+[tool.setuptools]
+packages = ["orbiter"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+orbiter = ["configs/*.json", "ksp_bootstrap.cs"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
