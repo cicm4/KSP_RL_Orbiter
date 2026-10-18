@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "source": "actual_ksp_krpc",
+  "ksp_version": "1.12.5.3190",
+  "krpc_server_version": "0.5.4",
+  "craft": "OrbiterRL Terrier",
+  "stage_plan": [
+    3,
+    2
+  ],
+  "fuel_stages": [
+    2,
+    1
+  ],
+  "limitations": [
+    "One actual KSP flight per neural checkpoint on one craft.",
+    "Coast probes cover 30-39 seconds; a complete revolution was not observed.",
+    "The planar headless model is a local approximation, not an exact KSP simulator.",
+    "Raw recordings preserve their original capture paths; repository model copies are matched by SHA256."
+  ],
+  "flights": [
+    {
+      "model": "models/terrier_ppo.zip",
+      "model_sha256": "d57c9c4f710a8f21e36f2c15fc32b83d46b5a06457d185af28c84f87ccb72440",
+      "training_transitions": 131072,
+      "unseen_simulator_successes": 100,
+      "unseen_simulator_episodes": 100,
+      "success": true,
+      "insertion_seconds": 273.1999999997515,
+      "periapsis_m": 71989.38868661283,
+      "apoapsis_m": 81241.34150363144,
+      "control_release": {
+        "event": "controls_released",
+        "wall_time": 1792352780.142373,
+        "errors": []
+      },
+      "flight_log": "validation/terrier/terrier_policy_01.jsonl",
+      "coast_record": "validation/terrier/terrier_policy_01_coast.json",
+      "simulator_test": "validation/terrier/terrier_ppo_simulator_test.json"
+    },
+    {
+      "model": "models/terrier_aero_ppo.zip",
+      "model_sha256": "a3246f0edc8aca0f895c2940e94ca024f215bd24812e4034c08e25497924948c",
+      "training_transitions": 114688,
+      "unseen_simulator_successes": 99,
+      "unseen_simulator_episodes": 100,
+      "success": true,
+      "insertion_seconds": 303.09999999972433,
+      "periapsis_m": 71158.738565546,
+      "apoapsis_m": 85480.3600340779,
+      "control_release": {
+        "event": "controls_released",
+        "wall_time": 1792353137.981212,
+        "errors": []
+      },
+      "flight_log": "validation/terrier/terrier_aero_policy_01.jsonl",
+      "coast_record": "validation/terrier/terrier_aero_policy_01_coast.json",
+      "simulator_test": "validation/terrier/terrier_aero_ppo_simulator_test.json"
+    }
+  ],
+  "files": {
+    "models/terrier_aero_ppo.metadata.json": "df4e2a3613d5abcf3fdde5b47168225cf3bfd8ef7d42088babd813f1995ee292",
+    "models/terrier_aero_ppo.zip": "a3246f0edc8aca0f895c2940e94ca024f215bd24812e4034c08e25497924948c",
+    "models/terrier_ppo.metadata.json": "facab4493f0873c7e024c01314b37854a47c86204f27f34d275ad601bcc62182",
+    "models/terrier_ppo.zip": "d57c9c4f710a8f21e36f2c15fc32b83d46b5a06457d185af28c84f87ccb72440",
+    "validation/terrier/aerodynamics_fit_provenance.json": "801cf8c40a20a24aeaedf61eef8da17faa8aca94445ed9cdb2c0ba5db74d563b",
+    "validation/terrier/aerodynamics_independent.json": "32d14584ed5289d1dc8ab6046610b30202bcf0fcaef73f9f29f63488a0c9a5d5",
+    "validation/terrier/ksp_terrier_aero_policy_capture.json": "b616029bc29ec48e66a0f8f679b2b478133e082119eb16bbca6a884ad32591d8",
+    "validation/terrier/ksp_terrier_ascent_capture.json": "7e0aa497b50e66bbbb0eec7a2ed2da675bedde0dcbcd1a990f828d98611c62d4",
+    "validation/terrier/terrier_aero_policy_01.jsonl": "6fa0302e07e64d0b261e9363fe1263caaa5aff83f0b14e00731d91065f53103e",
+    "validation/terrier/terrier_aero_policy_01_coast.json": "79460ea5029273912f9b6801686616ddd5ff3477ab7225fb351315f60996bb46",
+    "validation/terrier/terrier_aero_ppo_simulator_test.json": "ba3f03940b7f3e72f533c4683a3e1625efa733eb9e333356713dd92149a5a91b",
+    "validation/terrier/terrier_policy_01.jsonl": "d7e5c3e503a5779ccf12c6d17a2796602e10c184eb37e24aee605f1b6883350c",
+    "validation/terrier/terrier_policy_01_coast.json": "9914026e54e2ebf305ed616c8c9aeb973d2cf25d00f6198892fd7b8264cda31a",
+    "validation/terrier/terrier_ppo_simulator_test.json": "c28138325e99e9e52d8f914e54b6a2937693e0174a5ea396b91c65e2d508b754"
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "calibration_scope": "local_first_stage_aerodynamics",
+  "capture_source": "live_krpc_read_only",
+  "captured_at_utc": "2026-10-18T19:37:01.018640+00:00",
+  "first_observed_krpc_stage": 3,
+  "coherent_samples": 75,
+  "rejected_counts": {
+    "outside first observed stage": 25
+  },
+  "coefficients": {
+    "drag_area": 0.7447909856206689,
+    "drag_alpha_area": 6.846020002846322,
+    "lift_area": 4.434034202553299
+  },
+  "coefficient_units": "effective m^2",
+  "fitting_method": "Unweighted least squares on measured Cd*A and signed Cl*A; no held-out samples used for fitting",
+  "force_law": {
+    "drag": "CdA = drag_area + drag_alpha_area*sin(alpha)^2",
+    "lift": "ClA = lift_area*sin(2*alpha)",
+    "alpha": "local pitch - atan2(radial airspeed, horizontal airspeed)"
+  },
+  "split": {
+    "holdout_every": 4,
+    "holdout_offset": 0,
+    "training_source_indices": [
+      1,
+      2,
+      3,
+      5,
+      6,
+      7,
+      9,
+      10,
+      11,
+      13,
+      14,
+      15,
+      17,
+      18,
+      19,
+      21,
+      22,
+      23,
+      25,
+      26,
+      27,
+      29,
+      30,
+      31,
+      33,
+      34,
+      35,
+      37,
+      38,
+      39,
+      41,
+      42,
+      43,
+      45,
+      46,
+      47,
+      49,
+      50,
+      51,
+      53,
+      54,
+      55,
+      57,
+      58,
+      59,
+      61,
+      62,
+      63,
+      65,
+      66,
+      67,
+      69,
+      70,
+      71,
+      73,
+      74
+    ],
+    "heldout_source_indices": [
+      0,
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      60,
+      64,
+      68,
+      72
+    ]
+  },
+  "observed_ranges": {
+    "ut_s": [
+      2283.699999998213,
+      2358.9199999981447
+    ],
+    "alpha_deg": [
+      -19.0284557613925,
+      0.41076777917601826
+    ],
+    "dynamic_pressure_pa": [
+      2376.175537109375,
+      27693.2734375
+    ]
+  },
+  "fit_metrics": {
+    "samples": 56,
+    "drag_area_rmse_m2": 0.06286559377363667,
+    "lift_area_rmse_m2": 0.2235982835548765,
+    "drag_force_rmse_n": 1168.1315271562614,
+    "lift_force_rmse_n": 3708.5226975994246
+  },
+  "heldout_metrics": {
+    "samples": 19,
+    "drag_area_rmse_m2": 0.07202945535229109,
+    "lift_area_rmse_m2": 0.2409417048838447,
+    "drag_force_rmse_n": 1331.9428272691823,
+    "lift_force_rmse_n": 3494.4358433133575
+  },
+  "baseline_heldout_metrics": {
+    "samples": 19,
+    "drag_area_rmse_m2": 0.6172968634705422,
+    "lift_area_rmse_m2": 1.2766463457840578,
+    "drag_force_rmse_n": 11004.457248872008,
+    "lift_force_rmse_n": 12871.22000304579
+  },
+  "thresholds": {
+    "min_dynamic_pressure_pa": 20.0,
+    "max_rpc_skew_s": 0.25,
+    "max_relative_q_error": 0.2,
+    "min_drag_velocity_alignment": 0.95,
+    "max_lift_velocity_alignment": 0.05
+  },
+  "applied_globally_to_all_stages": true,
+  "later_stages_validated": false,
+  "limitations": [
+    "Held-out samples are interleaved within the same flight, not an independent held-out flight.",
+    "The coefficients interpolate the observed first-stage regime; high-angle/Mach extrapolation is unvalidated.",
+    "The simulator applies these scalar coefficients globally; later-stage geometry has not been validated.",
+    "The projection assumes prograde planar flight and a rigidly rotating atmosphere without winds.",
+    "This fit does not validate 3D attitude, staging transients, joints, terrain, or Unity physics."
+  ],
+  "capture_path": "/Users/cicm/KSP_RL_Orbiter/runs/ksp_terrier_ascent_capture.json",
+  "capture_sha256": "7e0aa497b50e66bbbb0eec7a2ed2da675bedde0dcbcd1a990f828d98611c62d4",
+  "base_config_path": "/Users/cicm/KSP_RL_Orbiter/orbiter/configs/orbiter_rl_terrier.json",
+  "base_config_sha256": "91d458f60f920e93b78aaf143f841a4d53c5d1443cb00f591648fb63bdb0a7ca"
+}

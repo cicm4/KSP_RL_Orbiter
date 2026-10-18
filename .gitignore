@@ -13,3 +13,10 @@ __pycache__/
 *.pyo
 .env
 .venv/
+runs/
+.pytest_cache/
+.impeccable/
+.ruff_cache/
+build/
+dist/
+*.egg-info/

@@ -1,0 +1,1168 @@
+{
+  "schema_version": 1,
+  "validation_scope": "independent_actual_KSP_flight_first_stage_forces",
+  "no_refitting": true,
+  "independent_capture": true,
+  "frozen_fit_path": "runs/terrier_aero_fit.json",
+  "frozen_fit_sha256": "5b017ae314192ea0e0dc07064e750741f27955227a0c6fc459347173e3611c50",
+  "fit_capture_sha256": "7e0aa497b50e66bbbb0eec7a2ed2da675bedde0dcbcd1a990f828d98611c62d4",
+  "validation_capture_path": "runs/ksp_terrier_aero_policy_capture.json",
+  "validation_capture_sha256": "b616029bc29ec48e66a0f8f679b2b478133e082119eb16bbca6a884ad32591d8",
+  "captured_at_utc": "2026-10-18T19:47:15.145419+00:00",
+  "warnings": [],
+  "coefficients": {
+    "drag_area": 0.7447909856206689,
+    "drag_alpha_area": 6.846020002846322,
+    "lift_area": 4.434034202553299
+  },
+  "baseline_coefficients": {
+    "drag_area": 1.5,
+    "drag_alpha_area": 0.0,
+    "lift_area": 0.0
+  },
+  "coherent_samples": 86,
+  "captured_samples": 88,
+  "first_observed_krpc_stage": 3,
+  "accepted_source_indices": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87
+  ],
+  "rejected_counts": {
+    "insufficient aerodynamic signal": 2
+  },
+  "calibrated_force_metrics": {
+    "samples": 86,
+    "drag_area_rmse_m2": 0.06384312492620074,
+    "lift_area_rmse_m2": 0.2890853299477318,
+    "drag_force_rmse_n": 1303.7578728136384,
+    "lift_force_rmse_n": 3459.098319664718
+  },
+  "baseline_force_metrics": {
+    "samples": 86,
+    "drag_area_rmse_m2": 0.6978618695105664,
+    "lift_area_rmse_m2": 1.3182825540903236,
+    "drag_force_rmse_n": 12183.382794745432,
+    "lift_force_rmse_n": 10209.374022461283
+  },
+  "force_rmse_reduction_percent": {
+    "drag_force_rmse_n": 89.2988844331811,
+    "lift_force_rmse_n": 66.11840929664758
+  },
+  "alpha_range_deg": [
+    -22.271183871737882,
+    0.37506726551635594
+  ],
+  "original_fit_alpha_range_deg": [
+    -19.0284557613925,
+    0.41076777917601826
+  ],
+  "samples_outside_original_alpha_range": 5,
+  "limitations": [
+    "Independent measured-force validation applies to this craft and observed first-stage flight regime.",
+    "Second-stage aerodynamics and high-angle/Mach extrapolation remain unvalidated.",
+    "Planar force projection assumes prograde motion and a rigidly rotating atmosphere.",
+    "Trajectory replay uses measured command timing and a measured initial state; it is not a replay of Unity physics.",
+    "Replay stops before depletion; differing real/automatic staging delays are not treated as aerodynamic error."
+  ],
+  "command_replay": {
+    "baseline": {
+      "samples": 43,
+      "start_time": 1.1399999999989632,
+      "end_time": 87.39999999992051,
+      "initial_mass_error_kg": 6.103515625e-05,
+      "commands_replayed": 43,
+      "rmse": {
+        "altitude": 1077.4476345512198,
+        "vertical_speed": 42.948053422342575,
+        "horizontal_speed": 26.102824888708557,
+        "apoapsis": 4726.191119884825
+      },
+      "final_errors": {
+        "time": 87.39999999992051,
+        "actual_minus_model": {
+          "altitude": 2689.414789689239,
+          "vertical_speed": 70.66884333667008,
+          "horizontal_speed": 67.83814340959191,
+          "apoapsis": 11861.017186265788
+        },
+        "pitch_error_deg": -0.09082543387684439,
+        "mass_error_kg": -0.013376421953580575
+      },
+      "maximum_absolute_pitch_error_deg": 0.539020839244543,
+      "maximum_absolute_mass_error_kg": 0.013376421953580575,
+      "trace": [
+        {
+          "time": 3.139999999997144,
+          "actual_minus_model": {
+            "altitude": 0.08851573360152543,
+            "vertical_speed": -0.01121351869316456,
+            "horizontal_speed": -0.034472868523238276,
+            "apoapsis": 0.07320727594196796
+          },
+          "pitch_error_deg": -0.045670050761074776,
+          "mass_error_kg": -0.004572892656142358
+        },
+        {
+          "time": 5.139999999995325,
+          "actual_minus_model": {
+            "altitude": 0.1684811128070578,
+            "vertical_speed": -0.009638281858482145,
+            "horizontal_speed": -0.06145311638044859,
+            "apoapsis": 0.1463216651463881
+          },
+          "pitch_error_deg": -0.05579938071473123,
+          "mass_error_kg": -0.004312577884775237
+        },
+        {
+          "time": 7.139999999993506,
+          "actual_minus_model": {
+            "altitude": 0.2774129674071446,
+            "vertical_speed": 0.01574071361503826,
+            "horizontal_speed": -0.08791719048832647,
+            "apoapsis": 0.3283957722596824
+          },
+          "pitch_error_deg": -0.05593176633958308,
+          "mass_error_kg": -0.005743141216953518
+        },
+        {
+          "time": 9.159999999991669,
+          "actual_minus_model": {
+            "altitude": 0.4770826883614063,
+            "vertical_speed": 0.07732023025808843,
+            "horizontal_speed": -0.12078311779484352,
+            "apoapsis": 0.8061366422334686
+          },
+          "pitch_error_deg": -0.06854214205840492,
+          "mass_error_kg": -0.006621965287195053
+        },
+        {
+          "time": 11.15999999998985,
+          "actual_minus_model": {
+            "altitude": 0.8479520474793389,
+            "vertical_speed": 0.18694711458167745,
+            "horizontal_speed": -0.15558810902834352,
+            "apoapsis": 1.837845353060402
+          },
+          "pitch_error_deg": -0.0791320631882968,
+          "mass_error_kg": -0.007126611550120288
+        },
+        {
+          "time": 13.159999999988031,
+          "actual_minus_model": {
+            "altitude": 1.502217159839347,
+            "vertical_speed": 0.35879735144300895,
+            "horizontal_speed": -0.2672383973487342,
+            "apoapsis": 3.7880690324818715
+          },
+          "pitch_error_deg": 0.12367327913685244,
+          "mass_error_kg": -0.007139672208722914
+        },
+        {
+          "time": 15.179999999986194,
+          "actual_minus_model": {
+            "altitude": 2.592087605735287,
+            "vertical_speed": 0.6100084332291544,
+            "horizontal_speed": -0.47646697099904145,
+            "apoapsis": 7.165542749571614
+          },
+          "pitch_error_deg": 0.3856917792104184,
+          "mass_error_kg": -0.006546353419253137
+        },
+        {
+          "time": 17.179999999984375,
+          "actual_minus_model": {
+            "altitude": 4.263634979026392,
+            "vertical_speed": 0.9477845810869354,
+            "horizontal_speed": -0.7334500773802404,
+            "apoapsis": 12.467004750738852
+          },
+          "pitch_error_deg": 0.4814805860687983,
+          "mass_error_kg": -0.007211415120764286
+        },
+        {
+          "time": 19.179999999982556,
+          "actual_minus_model": {
+            "altitude": 6.71348701545503,
+            "vertical_speed": 1.3858927352954424,
+            "horizontal_speed": -1.0016179232085562,
+            "apoapsis": 20.37567834125366
+          },
+          "pitch_error_deg": 0.5198182829875293,
+          "mass_error_kg": -0.007390523143840255
+        },
+        {
+          "time": 21.179999999980737,
+          "actual_minus_model": {
+            "altitude": 10.150724252918735,
+            "vertical_speed": 1.9318809097324845,
+            "horizontal_speed": -1.2402345058781634,
+            "apoapsis": 31.60919512808323
+          },
+          "pitch_error_deg": 0.48972844910376523,
+          "mass_error_kg": -0.006983217779634288
+        },
+        {
+          "time": 23.1999999999789,
+          "actual_minus_model": {
+            "altitude": 14.865073597524315,
+            "vertical_speed": 2.615826531066162,
+            "horizontal_speed": -1.48033256537002,
+            "apoapsis": 47.351707905647345
+          },
+          "pitch_error_deg": 0.539020839244543,
+          "mass_error_kg": -0.006435795648940257
+        },
+        {
+          "time": 25.219999999977063,
+          "actual_minus_model": {
+            "altitude": 21.121455316315405,
+            "vertical_speed": 3.4569591945071636,
+            "horizontal_speed": -1.711505072843977,
+            "apoapsis": 68.77019355620723
+          },
+          "pitch_error_deg": 0.49949798755994834,
+          "mass_error_kg": -0.0063585189600416925
+        },
+        {
+          "time": 27.219999999975244,
+          "actual_minus_model": {
+            "altitude": 29.159668877720833,
+            "vertical_speed": 4.459066723922803,
+            "horizontal_speed": -1.8607646751011089,
+            "apoapsis": 96.88944452314172
+          },
+          "pitch_error_deg": 0.5294314419712407,
+          "mass_error_kg": -0.005578116191827576
+        },
+        {
+          "time": 29.219999999973425,
+          "actual_minus_model": {
+            "altitude": 39.40912029042374,
+            "vertical_speed": 5.665003717308025,
+            "horizontal_speed": -1.9772453287350231,
+            "apoapsis": 133.74706183827948
+          },
+          "pitch_error_deg": 0.5008764341247769,
+          "mass_error_kg": -0.005552772050577914
+        },
+        {
+          "time": 31.239999999971587,
+          "actual_minus_model": {
+            "altitude": 52.43510743835941,
+            "vertical_speed": 7.104199697990168,
+            "horizontal_speed": -2.041755412518114,
+            "apoapsis": 181.68650520662777
+          },
+          "pitch_error_deg": 0.49321136117235653,
+          "mass_error_kg": -0.0035358231034479104
+        },
+        {
+          "time": 33.25999999996975,
+          "actual_minus_model": {
+            "altitude": 68.61551740020514,
+            "vertical_speed": 8.783967856045308,
+            "horizontal_speed": -2.0400412419861595,
+            "apoapsis": 242.5501301109325
+          },
+          "pitch_error_deg": 0.4825884603772863,
+          "mass_error_kg": -0.003260987157773343
+        },
+        {
+          "time": 35.25999999996793,
+          "actual_minus_model": {
+            "altitude": 88.23482917132787,
+            "vertical_speed": 10.694334683408073,
+            "horizontal_speed": -1.957248281715124,
+            "apoapsis": 317.76857244153507
+          },
+          "pitch_error_deg": 0.46981840068542624,
+          "mass_error_kg": -0.0014732753861608217
+        },
+        {
+          "time": 37.25999999996611,
+          "actual_minus_model": {
+            "altitude": 111.90971299598459,
+            "vertical_speed": 12.838744900708775,
+            "horizontal_speed": -1.749246655535444,
+            "apoapsis": 409.7580216318602
+          },
+          "pitch_error_deg": 0.4460506595253264,
+          "mass_error_kg": -0.0010645158581610303
+        },
+        {
+          "time": 39.25999999996429,
+          "actual_minus_model": {
+            "altitude": 140.1308337696828,
+            "vertical_speed": 15.229909938105749,
+            "horizontal_speed": -1.4223176963512287,
+            "apoapsis": 521.0928311839234
+          },
+          "pitch_error_deg": 0.4252999707346845,
+          "mass_error_kg": 0.0008406654269492719
+        },
+        {
+          "time": 41.259999999962474,
+          "actual_minus_model": {
+            "altitude": 173.38473939034157,
+            "vertical_speed": 17.855550238494544,
+            "horizontal_speed": -0.9592862110694682,
+            "apoapsis": 653.9083634065464
+          },
+          "pitch_error_deg": 0.4082113304163357,
+          "mass_error_kg": -0.0001838407879404258
+        },
+        {
+          "time": 43.259999999960655,
+          "actual_minus_model": {
+            "altitude": 212.09578246623278,
+            "vertical_speed": 20.689300542100625,
+            "horizontal_speed": -0.3291525577877792,
+            "apoapsis": 809.9560809236718
+          },
+          "pitch_error_deg": 0.3924356183777604,
+          "mass_error_kg": 0.0007447779953508871
+        },
+        {
+          "time": 45.259999999958836,
+          "actual_minus_model": {
+            "altitude": 256.6385763445869,
+            "vertical_speed": 23.628494704241973,
+            "horizontal_speed": 0.3904017354830671,
+            "apoapsis": 988.4545023215469
+          },
+          "pitch_error_deg": 0.40258928973814534,
+          "mass_error_kg": -0.00027972822135780007
+        },
+        {
+          "time": 47.279999999957,
+          "actual_minus_model": {
+            "altitude": 307.6993884157855,
+            "vertical_speed": 26.794375817737603,
+            "horizontal_speed": 1.2609760005860267,
+            "apoapsis": 1196.493225602433
+          },
+          "pitch_error_deg": 0.42073479894449406,
+          "mass_error_kg": 0.0007753642512398073
+        },
+        {
+          "time": 49.27999999995518,
+          "actual_minus_model": {
+            "altitude": 365.27281564252917,
+            "vertical_speed": 30.602626911181574,
+            "horizontal_speed": 2.4338724383252384,
+            "apoapsis": 1451.2800108396914
+          },
+          "pitch_error_deg": 0.4252091311405053,
+          "mass_error_kg": 0.0007274205363501096
+        },
+        {
+          "time": 51.29999999995334,
+          "actual_minus_model": {
+            "altitude": 431.3249449947616,
+            "vertical_speed": 34.55839139187111,
+            "horizontal_speed": 3.9308487473665252,
+            "apoapsis": 1742.86461830826
+          },
+          "pitch_error_deg": 0.4499901591676547,
+          "mass_error_kg": 0.000805950508947717
+        },
+        {
+          "time": 53.319999999951506,
+          "actual_minus_model": {
+            "altitude": 505.44133042672183,
+            "vertical_speed": 38.57800125081798,
+            "horizontal_speed": 5.723818765367724,
+            "apoapsis": 2069.863278895966
+          },
+          "pitch_error_deg": 0.4438964517539574,
+          "mass_error_kg": 0.000884480479726335
+        },
+        {
+          "time": 55.31999999994969,
+          "actual_minus_model": {
+            "altitude": 586.9402174685383,
+            "vertical_speed": 42.63205513775847,
+            "horizontal_speed": 7.825181099827915,
+            "apoapsis": 2432.1639774532523
+          },
+          "pitch_error_deg": 0.4195604367772461,
+          "mass_error_kg": -0.0001400257351633627
+        },
+        {
+          "time": 57.31999999994787,
+          "actual_minus_model": {
+            "altitude": 676.6255249015521,
+            "vertical_speed": 46.699251956606304,
+            "horizontal_speed": 10.208504657843662,
+            "apoapsis": 2833.713066106895
+          },
+          "pitch_error_deg": 0.38851975023833063,
+          "mass_error_kg": 0.00030031179812795017
+        },
+        {
+          "time": 59.33999999994603,
+          "actual_minus_model": {
+            "altitude": 775.2949791420251,
+            "vertical_speed": 50.67914646095994,
+            "horizontal_speed": 12.9868172014489,
+            "apoapsis": 3275.705868930323
+          },
+          "pitch_error_deg": 0.36456066885320126,
+          "mass_error_kg": -0.00010943947927444242
+        },
+        {
+          "time": 61.33999999994421,
+          "actual_minus_model": {
+            "altitude": 880.9277314946521,
+            "vertical_speed": 54.604782920557966,
+            "horizontal_speed": 16.058771035029736,
+            "apoapsis": 3757.7975885524647
+          },
+          "pitch_error_deg": 0.3420458367282464,
+          "mass_error_kg": 0.00033089805492636515
+        },
+        {
+          "time": 63.33999999994239,
+          "actual_minus_model": {
+            "altitude": 994.4485450227512,
+            "vertical_speed": 58.50408377228359,
+            "horizontal_speed": 19.42732866841294,
+            "apoapsis": 4287.243613983272
+          },
+          "pitch_error_deg": 0.32555959229276255,
+          "mass_error_kg": 0.0002829543391271727
+        },
+        {
+          "time": 65.33999999994057,
+          "actual_minus_model": {
+            "altitude": 1115.5291651617736,
+            "vertical_speed": 62.1604101077657,
+            "horizontal_speed": 23.208099378566658,
+            "apoapsis": 4854.494386522332
+          },
+          "pitch_error_deg": 0.3183601090977959,
+          "mass_error_kg": 0.00023501062332798028
+        },
+        {
+          "time": 67.35999999993874,
+          "actual_minus_model": {
+            "altitude": 1244.97769850865,
+            "vertical_speed": 65.50351272221911,
+            "horizontal_speed": 27.25093657968415,
+            "apoapsis": 5460.001196948695
+          },
+          "pitch_error_deg": 0.29905009514244796,
+          "mass_error_kg": 0.000313540595016093
+        },
+        {
+          "time": 69.3799999999369,
+          "actual_minus_model": {
+            "altitude": 1380.7114108469104,
+            "vertical_speed": 68.32312330897798,
+            "horizontal_speed": 31.45477502700942,
+            "apoapsis": 6085.601029556128
+          },
+          "pitch_error_deg": 0.28226182126446986,
+          "mass_error_kg": 0.0003920705667042057
+        },
+        {
+          "time": 71.37999999993508,
+          "actual_minus_model": {
+            "altitude": 1520.229678792879,
+            "vertical_speed": 70.5692226722216,
+            "horizontal_speed": 35.734234660999846,
+            "apoapsis": 6719.480162924272
+          },
+          "pitch_error_deg": 0.24550200960888446,
+          "mass_error_kg": 0.00034412685090501327
+        },
+        {
+          "time": 73.37999999993326,
+          "actual_minus_model": {
+            "altitude": 1663.5225820436608,
+            "vertical_speed": 72.12044265432667,
+            "horizontal_speed": 40.23171474815314,
+            "apoapsis": 7352.134273800999
+          },
+          "pitch_error_deg": 0.2363600698020818,
+          "mass_error_kg": 0.00029618313510582084
+        },
+        {
+          "time": 75.37999999993144,
+          "actual_minus_model": {
+            "altitude": 1809.4355443947716,
+            "vertical_speed": 73.11841325530759,
+            "horizontal_speed": 44.69772825480038,
+            "apoapsis": 7988.131629979587
+          },
+          "pitch_error_deg": 0.1889152448265179,
+          "mass_error_kg": 0.0002482394193066284
+        },
+        {
+          "time": 77.3999999999296,
+          "actual_minus_model": {
+            "altitude": 1958.4031656873412,
+            "vertical_speed": 73.63517266967574,
+            "horizontal_speed": 49.08683485371182,
+            "apoapsis": 8634.058054480702
+          },
+          "pitch_error_deg": 0.152481035439628,
+          "mass_error_kg": 0.0003267693919042358
+        },
+        {
+          "time": 79.39999999992779,
+          "actual_minus_model": {
+            "altitude": 2106.56330748077,
+            "vertical_speed": 73.72283902429501,
+            "horizontal_speed": 53.27022599874101,
+            "apoapsis": 9277.353992127115
+          },
+          "pitch_error_deg": 0.08802038800715906,
+          "mass_error_kg": 0.0002788256751955487
+        },
+        {
+          "time": 81.39999999992597,
+          "actual_minus_model": {
+            "altitude": 2254.315041825408,
+            "vertical_speed": 73.27204731708821,
+            "horizontal_speed": 57.41680466610694,
+            "apoapsis": 9908.185422755545
+          },
+          "pitch_error_deg": 0.07883544372290174,
+          "mass_error_kg": 0.000719163210305851
+        },
+        {
+          "time": 83.39999999992415,
+          "actual_minus_model": {
+            "altitude": 2400.985752083827,
+            "vertical_speed": 72.56883638012448,
+            "horizontal_speed": 61.23111884476759,
+            "apoapsis": 10547.376477558631
+          },
+          "pitch_error_deg": -0.007464875381508307,
+          "mass_error_kg": 0.0006712194954161532
+        },
+        {
+          "time": 85.39999999992233,
+          "actual_minus_model": {
+            "altitude": 2546.193590199109,
+            "vertical_speed": 71.75261606736956,
+            "horizontal_speed": 64.65024260490043,
+            "apoapsis": 11205.946369101875
+          },
+          "pitch_error_deg": -0.09834398544877132,
+          "mass_error_kg": 0.0006232757787074661
+        },
+        {
+          "time": 87.39999999992051,
+          "actual_minus_model": {
+            "altitude": 2689.414789689239,
+            "vertical_speed": 70.66884333667008,
+            "horizontal_speed": 67.83814340959191,
+            "apoapsis": 11861.017186265788
+          },
+          "pitch_error_deg": -0.09082543387684439,
+          "mass_error_kg": -0.013376421953580575
+        }
+      ]
+    },
+    "calibrated": {
+      "samples": 43,
+      "start_time": 1.1399999999989632,
+      "end_time": 87.39999999992051,
+      "initial_mass_error_kg": 6.103515625e-05,
+      "commands_replayed": 43,
+      "rmse": {
+        "altitude": 45.05399926795187,
+        "vertical_speed": 4.181423045595042,
+        "horizontal_speed": 12.669633701441988,
+        "apoapsis": 338.2487871255605
+      },
+      "final_errors": {
+        "time": 87.39999999992051,
+        "actual_minus_model": {
+          "altitude": 138.24475512257777,
+          "vertical_speed": 9.100174455868341,
+          "horizontal_speed": -21.215376085276034,
+          "apoapsis": 916.7519035299774
+        },
+        "pitch_error_deg": -0.09082543387684439,
+        "mass_error_kg": -0.013376421953580575
+      },
+      "maximum_absolute_pitch_error_deg": 0.539020839244543,
+      "maximum_absolute_mass_error_kg": 0.013376421953580575,
+      "trace": [
+        {
+          "time": 3.139999999997144,
+          "actual_minus_model": {
+            "altitude": 0.0842903550947085,
+            "vertical_speed": -0.017276019015234567,
+            "horizontal_speed": -0.03458912820050841,
+            "apoapsis": 0.06070873269345611
+          },
+          "pitch_error_deg": -0.045670050761074776,
+          "mass_error_kg": -0.004572892656142358
+        },
+        {
+          "time": 5.139999999995325,
+          "actual_minus_model": {
+            "altitude": 0.13298273587133735,
+            "vertical_speed": -0.0386800605595603,
+            "horizontal_speed": -0.061959662139770444,
+            "apoapsis": 0.04423653322737664
+          },
+          "pitch_error_deg": -0.05579938071473123,
+          "mass_error_kg": -0.004312577884775237
+        },
+        {
+          "time": 7.139999999993506,
+          "actual_minus_model": {
+            "altitude": 0.1373449838720262,
+            "vertical_speed": -0.06583186818851772,
+            "horizontal_speed": -0.0895204189812091,
+            "apoapsis": -0.07733179558999836
+          },
+          "pitch_error_deg": -0.05593176633958308,
+          "mass_error_kg": -0.005743141216953518
+        },
+        {
+          "time": 9.159999999991669,
+          "actual_minus_model": {
+            "altitude": 0.08278544538188726,
+            "vertical_speed": -0.10145923431826276,
+            "horizontal_speed": -0.1248616923896293,
+            "apoapsis": -0.3512301987502724
+          },
+          "pitch_error_deg": -0.06854214205840492,
+          "mass_error_kg": -0.006621965287195053
+        },
+        {
+          "time": 11.15999999998985,
+          "actual_minus_model": {
+            "altitude": -0.04793370352126658,
+            "vertical_speed": -0.14692611910881226,
+            "horizontal_speed": -0.1643274422573029,
+            "apoapsis": -0.8305100719444454
+          },
+          "pitch_error_deg": -0.0791320631882968,
+          "mass_error_kg": -0.007126611550120288
+        },
+        {
+          "time": 13.159999999988031,
+          "actual_minus_model": {
+            "altitude": -0.2772387989098206,
+            "vertical_speed": -0.20466955767668793,
+            "horizontal_speed": -0.28962193692356664,
+            "apoapsis": -1.591965828789398
+          },
+          "pitch_error_deg": 0.12367327913685244,
+          "mass_error_kg": -0.007139672208722914
+        },
+        {
+          "time": 15.179999999986194,
+          "actual_minus_model": {
+            "altitude": -0.6360431028297171,
+            "vertical_speed": -0.2777573338892694,
+            "horizontal_speed": -0.5267166959741019,
+            "apoapsis": -2.7429926835466176
+          },
+          "pitch_error_deg": 0.3856917792104184,
+          "mass_error_kg": -0.006546353419253137
+        },
+        {
+          "time": 17.179999999984375,
+          "actual_minus_model": {
+            "altitude": -1.1501380081754178,
+            "vertical_speed": -0.36948017606648875,
+            "horizontal_speed": -0.8285256568730119,
+            "apoapsis": -4.397264360333793
+          },
+          "pitch_error_deg": 0.4814805860687983,
+          "mass_error_kg": -0.007211415120764286
+        },
+        {
+          "time": 19.179999999982556,
+          "actual_minus_model": {
+            "altitude": -1.8667862076545134,
+            "vertical_speed": -0.4855063890140343,
+            "horizontal_speed": -1.1641411735040492,
+            "apoapsis": -6.742848553694785
+          },
+          "pitch_error_deg": 0.5198182829875293,
+          "mass_error_kg": -0.007390523143840255
+        },
+        {
+          "time": 21.179999999980737,
+          "actual_minus_model": {
+            "altitude": -2.8426825974602252,
+            "vertical_speed": -0.634784548735297,
+            "horizontal_speed": -1.499084099602328,
+            "apoapsis": -10.047338736010715
+          },
+          "pitch_error_deg": 0.48972844910376523,
+          "mass_error_kg": -0.006983217779634288
+        },
+        {
+          "time": 23.1999999999789,
+          "actual_minus_model": {
+            "altitude": -4.15457512717694,
+            "vertical_speed": -0.8120661672353862,
+            "horizontal_speed": -1.8731475769011467,
+            "apoapsis": -14.491756991483271
+          },
+          "pitch_error_deg": 0.539020839244543,
+          "mass_error_kg": -0.006435795648940257
+        },
+        {
+          "time": 25.219999999977063,
+          "actual_minus_model": {
+            "altitude": -5.837930493871681,
+            "vertical_speed": -1.0066947749181736,
+            "horizontal_speed": -2.2809503588445637,
+            "apoapsis": -20.107712775934488
+          },
+          "pitch_error_deg": 0.49949798755994834,
+          "mass_error_kg": -0.0063585189600416925
+        },
+        {
+          "time": 27.219999999975244,
+          "actual_minus_model": {
+            "altitude": -7.9054981340887025,
+            "vertical_speed": -1.2149752826880729,
+            "horizontal_speed": -2.6579364956206177,
+            "apoapsis": -26.94561977707781
+          },
+          "pitch_error_deg": 0.5294314419712407,
+          "mass_error_kg": -0.005578116191827576
+        },
+        {
+          "time": 29.219999999973425,
+          "actual_minus_model": {
+            "altitude": -10.376386842690408,
+            "vertical_speed": -1.4153107659744535,
+            "horizontal_speed": -3.0638582313847564,
+            "apoapsis": -34.782540013315156
+          },
+          "pitch_error_deg": 0.5008764341247769,
+          "mass_error_kg": -0.005552772050577914
+        },
+        {
+          "time": 31.239999999971587,
+          "actual_minus_model": {
+            "altitude": -13.260009971330874,
+            "vertical_speed": -1.6035068087890636,
+            "horizontal_speed": -3.497061123726155,
+            "apoapsis": -43.594889186671935
+          },
+          "pitch_error_deg": 0.49321136117235653,
+          "mass_error_kg": -0.0035358231034479104
+        },
+        {
+          "time": 33.25999999996975,
+          "actual_minus_model": {
+            "altitude": -16.491431289119646,
+            "vertical_speed": -1.7650594684810983,
+            "horizontal_speed": -3.957140074946807,
+            "apoapsis": -53.002240888541564
+          },
+          "pitch_error_deg": 0.4825884603772863,
+          "mass_error_kg": -0.003260987157773343
+        },
+        {
+          "time": 35.25999999996793,
+          "actual_minus_model": {
+            "altitude": -19.971845235559158,
+            "vertical_speed": -1.8938008187262767,
+            "horizontal_speed": -4.444416222622749,
+            "apoapsis": -62.65443456405774
+          },
+          "pitch_error_deg": 0.46981840068542624,
+          "mass_error_kg": -0.0014732753861608217
+        },
+        {
+          "time": 37.25999999996611,
+          "actual_minus_model": {
+            "altitude": -23.687437458662316,
+            "vertical_speed": -2.0008630464509167,
+            "horizontal_speed": -4.941917674254853,
+            "apoapsis": -72.70734339172486
+          },
+          "pitch_error_deg": 0.4460506595253264,
+          "mass_error_kg": -0.0010645158581610303
+        },
+        {
+          "time": 39.25999999996429,
+          "actual_minus_model": {
+            "altitude": -27.56875260581728,
+            "vertical_speed": -2.0713375305006707,
+            "horizontal_speed": -5.482675849392905,
+            "apoapsis": -82.64367721264716
+          },
+          "pitch_error_deg": 0.4252999707346845,
+          "mass_error_kg": 0.0008406654269492719
+        },
+        {
+          "time": 41.259999999962474,
+          "actual_minus_model": {
+            "altitude": -31.544185463222675,
+            "vertical_speed": -2.1088030967193276,
+            "horizontal_speed": -6.078673127910832,
+            "apoapsis": -92.32937354769092
+          },
+          "pitch_error_deg": 0.4082113304163357,
+          "mass_error_kg": -0.0001838407879404258
+        },
+        {
+          "time": 43.259999999960655,
+          "actual_minus_model": {
+            "altitude": -35.57679715764243,
+            "vertical_speed": -2.1273043067157005,
+            "horizontal_speed": -6.730297338593459,
+            "apoapsis": -101.99575751740485
+          },
+          "pitch_error_deg": 0.3924356183777604,
+          "mass_error_kg": 0.0007447779953508871
+        },
+        {
+          "time": 45.259999999958836,
+          "actual_minus_model": {
+            "altitude": -39.657596327830106,
+            "vertical_speed": -2.2117955437087176,
+            "horizontal_speed": -7.547116056749616,
+            "apoapsis": -114.33498781453818
+          },
+          "pitch_error_deg": 0.40258928973814534,
+          "mass_error_kg": -0.00027972822135780007
+        },
+        {
+          "time": 47.279999999957,
+          "actual_minus_model": {
+            "altitude": -44.00052259862423,
+            "vertical_speed": -2.255688023681273,
+            "horizontal_speed": -8.5127365546264,
+            "apoapsis": -126.49518446577713
+          },
+          "pitch_error_deg": 0.42073479894449406,
+          "mass_error_kg": 0.0007753642512398073
+        },
+        {
+          "time": 49.27999999995518,
+          "actual_minus_model": {
+            "altitude": -47.79733392724302,
+            "vertical_speed": -1.7476229087878892,
+            "horizontal_speed": -9.469469342427715,
+            "apoapsis": -118.40688491903711
+          },
+          "pitch_error_deg": 0.4252091311405053,
+          "mass_error_kg": 0.0007274205363501096
+        },
+        {
+          "time": 51.29999999995334,
+          "actual_minus_model": {
+            "altitude": -50.531155248289,
+            "vertical_speed": -1.222573147534149,
+            "horizontal_speed": -10.475116910306127,
+            "apoapsis": -106.62482610566076
+          },
+          "pitch_error_deg": 0.4499901591676547,
+          "mass_error_kg": 0.000805950508947717
+        },
+        {
+          "time": 53.319999999951506,
+          "actual_minus_model": {
+            "altitude": -52.19521824398544,
+            "vertical_speed": -0.7022541010042005,
+            "horizontal_speed": -11.554011168824985,
+            "apoapsis": -91.7928248270182
+          },
+          "pitch_error_deg": 0.4438964517539574,
+          "mass_error_kg": 0.000884480479726335
+        },
+        {
+          "time": 55.31999999994969,
+          "actual_minus_model": {
+            "altitude": -52.71950055169873,
+            "vertical_speed": -0.14280757172451786,
+            "horizontal_speed": -12.667037804322774,
+            "apoapsis": -71.76331492478494
+          },
+          "pitch_error_deg": 0.4195604367772461,
+          "mass_error_kg": -0.0001400257351633627
+        },
+        {
+          "time": 57.31999999994787,
+          "actual_minus_model": {
+            "altitude": -52.07253634277731,
+            "vertical_speed": 0.4333923225503895,
+            "horizontal_speed": -13.810285308003415,
+            "apoapsis": -47.188437527860515
+          },
+          "pitch_error_deg": 0.38851975023833063,
+          "mass_error_kg": 0.00030031179812795017
+        },
+        {
+          "time": 59.33999999994603,
+          "actual_minus_model": {
+            "altitude": -50.26158239680808,
+            "vertical_speed": 1.0469936813491358,
+            "horizontal_speed": -14.867783718415524,
+            "apoapsis": -16.609323658281937
+          },
+          "pitch_error_deg": 0.36456066885320126,
+          "mass_error_kg": -0.00010943947927444242
+        },
+        {
+          "time": 61.33999999994421,
+          "actual_minus_model": {
+            "altitude": -47.031067903968506,
+            "vertical_speed": 1.8410761269486784,
+            "horizontal_speed": -15.867323618688488,
+            "apoapsis": 28.650485586142167
+          },
+          "pitch_error_deg": 0.3420458367282464,
+          "mass_error_kg": 0.00033089805492636515
+        },
+        {
+          "time": 63.33999999994239,
+          "actual_minus_model": {
+            "altitude": -41.92971633106936,
+            "vertical_speed": 2.858836355230551,
+            "horizontal_speed": -16.844559006554164,
+            "apoapsis": 93.66352161183022
+          },
+          "pitch_error_deg": 0.32555959229276255,
+          "mass_error_kg": 0.0002829543391271727
+        },
+        {
+          "time": 65.33999999994057,
+          "actual_minus_model": {
+            "altitude": -34.73848158621695,
+            "vertical_speed": 3.930935476757327,
+            "horizontal_speed": -17.66487615439297,
+            "apoapsis": 171.15355831442866
+          },
+          "pitch_error_deg": 0.3183601090977959,
+          "mass_error_kg": 0.00023501062332798028
+        },
+        {
+          "time": 67.35999999993874,
+          "actual_minus_model": {
+            "altitude": -25.219269768102095,
+            "vertical_speed": 5.009036534846018,
+            "horizontal_speed": -18.486153742754425,
+            "apoapsis": 259.0363675224362
+          },
+          "pitch_error_deg": 0.29905009514244796,
+          "mass_error_kg": 0.000313540595016093
+        },
+        {
+          "time": 69.3799999999369,
+          "actual_minus_model": {
+            "altitude": -13.600236419704743,
+            "vertical_speed": 5.951888419333045,
+            "horizontal_speed": -19.30756015022365,
+            "apoapsis": 347.3766413583653
+          },
+          "pitch_error_deg": 0.28226182126446986,
+          "mass_error_kg": 0.0003920705667042057
+        },
+        {
+          "time": 71.37999999993508,
+          "actual_minus_model": {
+            "altitude": -0.30448641383554786,
+            "vertical_speed": 6.7401281240543085,
+            "horizontal_speed": -20.086146750141324,
+            "apoapsis": 432.65374258719385
+          },
+          "pitch_error_deg": 0.24550200960888446,
+          "mass_error_kg": 0.00034412685090501327
+        },
+        {
+          "time": 73.37999999993326,
+          "actual_minus_model": {
+            "altitude": 14.290400614147075,
+            "vertical_speed": 7.279758564776785,
+            "horizontal_speed": -20.64064947859083,
+            "apoapsis": 505.76513199938927
+          },
+          "pitch_error_deg": 0.2363600698020818,
+          "mass_error_kg": 0.00029618313510582084
+        },
+        {
+          "time": 75.37999999993144,
+          "actual_minus_model": {
+            "altitude": 29.94610696134623,
+            "vertical_speed": 7.728733241103896,
+            "horizontal_speed": -21.12824062652993,
+            "apoapsis": 575.860534495092
+          },
+          "pitch_error_deg": 0.1889152448265179,
+          "mass_error_kg": 0.0002482394193066284
+        },
+        {
+          "time": 77.3999999999296,
+          "actual_minus_model": {
+            "altitude": 46.698628742131405,
+            "vertical_speed": 8.13788571216287,
+            "horizontal_speed": -21.55685858099764,
+            "apoapsis": 646.1679716045037
+          },
+          "pitch_error_deg": 0.152481035439628,
+          "mass_error_kg": 0.0003267693919042358
+        },
+        {
+          "time": 79.39999999992779,
+          "actual_minus_model": {
+            "altitude": 64.1306480888743,
+            "vertical_speed": 8.502969882974298,
+            "horizontal_speed": -21.87237686269566,
+            "apoapsis": 714.9323988454416
+          },
+          "pitch_error_deg": 0.08802038800715906,
+          "mass_error_kg": 0.0002788256751955487
+        },
+        {
+          "time": 81.39999999992597,
+          "actual_minus_model": {
+            "altitude": 82.048972708988,
+            "vertical_speed": 8.664611272821048,
+            "horizontal_speed": -21.877774093450398,
+            "apoapsis": 766.787715561688
+          },
+          "pitch_error_deg": 0.07883544372290174,
+          "mass_error_kg": 0.000719163210305851
+        },
+        {
+          "time": 83.39999999992415,
+          "actual_minus_model": {
+            "altitude": 100.39634034561459,
+            "vertical_speed": 8.84900987789581,
+            "horizontal_speed": -21.800126018415313,
+            "apoapsis": 820.8488959835377
+          },
+          "pitch_error_deg": -0.007464875381508307,
+          "mass_error_kg": 0.0006712194954161532
+        },
+        {
+          "time": 85.39999999992233,
+          "actual_minus_model": {
+            "altitude": 119.2350509368116,
+            "vertical_speed": 9.081150169344369,
+            "horizontal_speed": -21.645103119257442,
+            "apoapsis": 880.1514693493955
+          },
+          "pitch_error_deg": -0.09834398544877132,
+          "mass_error_kg": 0.0006232757787074661
+        },
+        {
+          "time": 87.39999999992051,
+          "actual_minus_model": {
+            "altitude": 138.24475512257777,
+            "vertical_speed": 9.100174455868341,
+            "horizontal_speed": -21.215376085276034,
+            "apoapsis": 916.7519035299774
+          },
+          "pitch_error_deg": -0.09082543387684439,
+          "mass_error_kg": -0.013376421953580575
+        }
+      ]
+    }
+  },
+  "flight_log_path": "runs/live/terrier_aero_policy_01.jsonl",
+  "flight_log_sha256_at_validation": "520b385954152e93c148058225fa7db66dfeccf7a726a982ea77348b85d30c99",
+  "first_excluded_staging_or_depletion_observation": {
+    "time": 89.39999999991869,
+    "stage": 0,
+    "fuel_fraction": 0.0,
+    "available_thrust": 0.0,
+    "mass": 6060.0
+  },
+  "trajectory_scope": "Powered first-stage intervals only; stop before real or model propellant exhaustion/staging",
+  "policy_model_path": "runs/validated/terrier_aero_ppo.zip",
+  "policy_model_sha256": "a3246f0edc8aca0f895c2940e94ca024f215bd24812e4034c08e25497924948c",
+  "policy_rl_transitions": 114688
+}
