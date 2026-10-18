@@ -14,22 +14,34 @@ from orbiter.env import EnvConfig, HeadlessOrbiterEnv
 from orbiter import live
 
 
-def test_nested_rpc_longer_inner_cannot_extend_parent_deadline():
-    started = time.monotonic()
-    with pytest.raises(TimeoutError):
-        with live.rpc_deadline(.02):
-            with live.rpc_deadline(.08):
-                time.sleep(.2)
-    assert time.monotonic()-started < .06
+@pytest.mark.parametrize("outer,inner", [(.02, .08), (.08, .02)],
+                         ids=["parent_deadline_first", "inner_deadline_first"])
+def test_nested_rpc_arms_and_dispatches_the_earliest_deadline(monkeypatch, outer, inner):
+    # Signal delivery depends on the host scheduler. Check the armed deadline
+    # and dispatched handler directly, retaining real-signal integration below.
+    now = [100.0]
+    original_handler = lambda signum, frame: None
+    handler = [original_handler]
+    timer = [(0.0, 0.0)]
 
+    def set_timer(which, seconds, interval=0.0):
+        previous = timer[0]
+        timer[0] = (seconds, interval)
+        return previous
 
-def test_nested_rpc_shorter_inner_keeps_its_own_deadline():
-    started = time.monotonic()
-    with pytest.raises(TimeoutError):
-        with live.rpc_deadline(.08):
-            with live.rpc_deadline(.02):
-                time.sleep(.2)
-    assert time.monotonic()-started < .06
+    monkeypatch.setattr(live.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(live.signal, "getsignal", lambda number: handler[0])
+    monkeypatch.setattr(live.signal, "getitimer", lambda which: timer[0])
+    monkeypatch.setattr(live.signal, "signal", lambda number, value: handler.__setitem__(0, value))
+    monkeypatch.setattr(live.signal, "setitimer", set_timer)
+    with pytest.raises(TimeoutError, match="0.02 wall-clock seconds"):
+        with live.rpc_deadline(outer):
+            with live.rpc_deadline(inner):
+                assert timer[0] == pytest.approx((.02, 0.0))
+                now[0] += .02
+                handler[0](signal.SIGALRM, None)
+    assert timer[0] == (0.0, 0.0)
+    assert handler[0] is original_handler
 
 
 def test_nested_rpc_restores_elapsed_parent_timer_and_handler(monkeypatch):
