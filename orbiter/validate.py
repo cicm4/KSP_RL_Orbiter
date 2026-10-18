@@ -16,6 +16,7 @@ import time
 
 from .live import (FlightLog, fly, jsonable, load_controller, rpc_deadline,
                    stage_numbers, wait_for_ut)
+from .ownership import FlightOwnership
 
 
 def orbit_failures(sample, config):
@@ -155,8 +156,9 @@ def main(argv=None):
                    mode='verify_current_read_only' if args.verify_current else 'learned_policy_flight',
                    trials=[], controller_flight_executed=False,
                    limitation='A current-orbit probe does not establish controller attribution; a bounded coast is not a full-orbit test.')
-    connection = None
+    connection, ownership = None, None
     owns_summary = False
+    print_summary = True
     path = args.output_dir/'validation.json'
     try:
         args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -164,6 +166,10 @@ def main(argv=None):
         with path.open('x') as output:
             json.dump(summary, output)
         owns_summary = True
+        # Read-only verification also needs a quiet endpoint: its independent
+        # coast samples must not race a separate flight worker's controls.
+        ownership = FlightOwnership(args.address, args.rpc_port)
+        ownership.acquire()
         checkpoint_sha = hashlib.sha256(args.model.read_bytes()).hexdigest()
         model, config = load_controller(args.model)
         if hashlib.sha256(args.model.read_bytes()).hexdigest() != checkpoint_sha:
@@ -210,20 +216,26 @@ def main(argv=None):
     except FileExistsError as error:
         # Never overwrite an existing record, including the summary itself.
         print(f'Validation stopped: {error}', flush=True)
+        print_summary = False
         return 1
     except Exception as error:
         summary['error'] = f'{type(error).__name__}: {error}'
         summary['success'] = False
     finally:
-        if connection is not None:
-            try:
-                with rpc_deadline(min(args.rpc_timeout, 3)):
-                    connection.close()
-            except Exception as error:
-                summary['connection_close_error'] = str(error)
-        if owns_summary:
-            path.write_text(json.dumps(jsonable(summary), indent=2, allow_nan=False)+'\n')
-    print(json.dumps(jsonable(summary), indent=2, allow_nan=False), flush=True)
+        try:
+            if connection is not None:
+                try:
+                    with rpc_deadline(min(args.rpc_timeout, 3)):
+                        connection.close()
+                except Exception as error:
+                    summary['connection_close_error'] = str(error)
+            if owns_summary:
+                path.write_text(json.dumps(jsonable(summary), indent=2, allow_nan=False)+'\n')
+            if print_summary:
+                print(json.dumps(jsonable(summary), indent=2, allow_nan=False), flush=True)
+        finally:
+            if ownership is not None:
+                ownership.release()
     return 0 if summary['success'] else 1
 
 

@@ -40,7 +40,10 @@ jobs:
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/orbiter-wheel-full/bin/python" -I "$GITHUB_WORKSPACE/tests/wheel_smoke.py" --with-train \
             --model "$GITHUB_WORKSPACE/models/terrier_ppo.zip" \
-            --model "$GITHUB_WORKSPACE/models/terrier_aero_ppo.zip"
+            --model "$GITHUB_WORKSPACE/models/terrier_aero_ppo.zip" \
+            --model "$GITHUB_WORKSPACE/models/transfer_ascent_ppo.zip" \
+            --capture-model "$GITHUB_WORKSPACE/models/moon_capture.zip" \
+            --capture-model "$GITHUB_WORKSPACE/models/stock_capture_experimental.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: distributions

@@ -4,11 +4,86 @@ import hashlib
 import json
 import math
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
 from orbiter.env import EnvConfig
 from orbiter import validate
+
+
+@pytest.mark.parametrize('verify_current', [False, True])
+def test_validation_busy_endpoint_rejects_before_model_or_rpc(tmp_path, monkeypatch, verify_current):
+    import krpc
+    from uuid import uuid4
+    from orbiter.ownership import FlightOwnership
+
+    address = f'validation-lock-test-{uuid4().hex}.invalid'
+    model = tmp_path/'model.zip'
+    model.write_bytes(b'fake')
+    monkeypatch.setattr(validate, 'load_controller', lambda *args: pytest.fail('Busy validation loaded model'))
+    monkeypatch.setattr(krpc, 'connect', lambda **kwargs: pytest.fail('Busy validation contacted RPC'))
+    args = ['--model', str(model), '--output-dir', str(tmp_path/'run'), '--address', address]
+    args += ['--verify-current'] if verify_current else ['--stage-plan', '3,2', '--fuel-stages', '2,1']
+    with FlightOwnership(address):
+        assert validate.main(args) == 1
+        result = json.loads((tmp_path/'run/validation.json').read_text())
+        assert 'FlightOwnershipBusy' in result['error']
+
+
+@pytest.mark.parametrize('outcome', ['success', 'interrupt', 'close_error', 'summary_error'])
+def test_validation_lease_covers_models_flight_close_and_summary(tmp_path, monkeypatch, outcome):
+    import krpc
+    from pathlib import Path
+    from uuid import uuid4
+    from orbiter.ownership import flight_busy
+
+    address = f'validation-lock-test-{uuid4().hex}.invalid'
+    model_path = tmp_path/'model.zip'
+    model_path.write_bytes(b'fake')
+    output = tmp_path/'run/validation.json'
+    observed = []
+    original_write = Path.write_text
+
+    def load(*args):
+        observed.append(('model', flight_busy(address)))
+        return SimpleNamespace(num_timesteps=1), EnvConfig()
+
+    def close():
+        observed.append(('close', flight_busy(address)))
+        if outcome == 'close_error':
+            raise RuntimeError('test validation close')
+
+    def fly(*args, **kwargs):
+        observed.append(('fly', flight_busy(address)))
+        if outcome == 'interrupt':
+            raise KeyboardInterrupt
+        return dict(success=True)
+
+    def write(path, *args, **kwargs):
+        if path == output:
+            observed.append(('summary', flight_busy(address)))
+            if outcome == 'summary_error':
+                raise OSError('test validation summary')
+        return original_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(validate, 'load_controller', load)
+    monkeypatch.setattr(validate, 'fly', fly)
+    monkeypatch.setattr(validate, 'verify_coast', lambda *args, **kwargs: dict(success=True))
+    monkeypatch.setattr(krpc, 'connect', lambda **kwargs: SimpleNamespace(close=close))
+    monkeypatch.setattr(Path, 'write_text', write)
+    args = ['--model', str(model_path), '--output-dir', str(output.parent),
+            '--address', address, '--stage-plan', '3,2', '--fuel-stages', '2,1']
+    if outcome == 'interrupt':
+        with pytest.raises(KeyboardInterrupt):
+            validate.main(args)
+    elif outcome == 'summary_error':
+        with pytest.raises(OSError, match='validation summary'):
+            validate.main(args)
+    else:
+        assert validate.main(args) == 0
+    assert observed == [('model', True), ('fly', True), ('close', True), ('summary', True)]
+    assert not flight_busy(address)
 
 
 @dataclass(frozen=True)
@@ -106,7 +181,8 @@ def test_verify_current_is_read_only_and_records_attribution_limit(tmp_path, mon
     monkeypatch.setattr(validate, 'fly', forbidden)
     output = tmp_path/'verification'
     assert validate.main(['--model', str(model), '--output-dir', str(output),
-                          '--verify-current', '--coast-seconds', '2']) == 0
+                          '--verify-current', '--coast-seconds', '2',
+                          '--address', f'validation-test-{uuid4().hex}.invalid']) == 0
     result = json.loads((output/'validation.json').read_text())
     assert result['source'] == 'actual_ksp_krpc'
     assert result['success'] and not result['controller_flight_executed']
@@ -127,7 +203,8 @@ def test_flight_and_independent_coast_must_both_pass(tmp_path, monkeypatch, flig
     output = tmp_path/'flight'
     assert validate.main(['--model', str(model), '--output-dir', str(output),
                           '--stage-plan', '3,2', '--fuel-stages', '2,1',
-                          '--coast-seconds', '1']) == expected_exit
+                          '--coast-seconds', '1',
+                          '--address', f'validation-test-{uuid4().hex}.invalid']) == expected_exit
     result = json.loads((output/'validation.json').read_text())
     assert result['success'] is flight_success
     assert result['controller_flight_executed']
@@ -138,7 +215,7 @@ def test_existing_validation_evidence_is_never_overwritten(tmp_path, monkeypatch
     output = tmp_path/'record'; output.mkdir()
     target = output/'validation.json'; target.write_text('original evidence')
     assert validate.main(['--model', str(model), '--output-dir', str(output),
-                          '--verify-current']) == 1
+                          '--verify-current', '--address', f'validation-test-{uuid4().hex}.invalid']) == 1
     assert target.read_text() == 'original evidence'
     assert not connection.closed  # no connection was opened
 
@@ -148,7 +225,7 @@ def test_current_orbit_with_nonzero_throttle_returns_failure(tmp_path, monkeypat
     connection.space_center.active_vessel.control = ReadOnlyControl(.2)
     output = tmp_path/'powered'
     assert validate.main(['--model', str(model), '--output-dir', str(output),
-                          '--verify-current']) == 1
+                          '--verify-current', '--address', f'validation-test-{uuid4().hex}.invalid']) == 1
     result = json.loads((output/'validation.json').read_text())
     assert not result['success']
     assert result['trials'][0]['coast']['failures'] == ['throttle_not_zero']

@@ -27,6 +27,7 @@ import numpy as np
 from .env import G0, EnvConfig, build_observation
 from .checkpoints import load_controller
 from .guidance import expert_action
+from .ownership import FlightOwnership
 
 
 @contextmanager
@@ -34,16 +35,28 @@ def rpc_deadline(seconds):
     """Bound blocking kRPC handshakes/reads on the macOS/Linux main thread."""
     if seconds <= 0:
         raise TimeoutError('kRPC deadline expired')
+    started = time.monotonic()
     previous = signal.getsignal(signal.SIGALRM)
+    timer = signal.getitimer(signal.ITIMER_REAL)
+    parent_first = timer[0] > 0 and timer[0] <= seconds
+    parent_fired = False
     def expired(signum, frame):
+        nonlocal parent_fired
+        if parent_first:
+            parent_fired = True
+            if callable(previous):
+                previous(signum, frame)
         raise TimeoutError(f'kRPC operation exceeded {seconds:g} wall-clock seconds')
     signal.signal(signal.SIGALRM, expired)
-    timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    signal.setitimer(signal.ITIMER_REAL, min(seconds, timer[0]) if timer[0] > 0 else seconds)
     try:
         yield
     finally:
-        signal.setitimer(signal.ITIMER_REAL, *timer)
+        # A nested read must neither extend the parent's deadline nor restart a
+        # parent alarm already delivered while inside this scope.
+        remaining = max(1e-6, timer[0]-(time.monotonic()-started)) if timer[0] > 0 and not parent_fired else 0.
         signal.signal(signal.SIGALRM, previous)
+        signal.setitimer(signal.ITIMER_REAL, remaining, timer[1])
 
 
 def wait_for_ut(space_center, target_ut, wall_timeout=15.0, *, clock=time.monotonic,
@@ -557,11 +570,15 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    model, config = load_controller(args.model) if args.model else (None, EnvConfig.load(args.config) if args.config else EnvConfig())
-    import krpc
     connection = None
     log = None
+    ownership = None
     try:
+        if args.fly:
+            ownership = FlightOwnership(args.address, args.rpc_port)
+            ownership.acquire()
+        model, config = load_controller(args.model) if args.model else (None, EnvConfig.load(args.config) if args.config else EnvConfig())
+        import krpc
         with rpc_deadline(args.rpc_timeout):
             connection = krpc.connect(name='Orbiter flight' if args.fly else 'Read-only orbiter inspection',
                                       address=args.address, rpc_port=args.rpc_port, stream_port=None,
@@ -587,14 +604,20 @@ def main(argv=None):
         print(f'Live operation stopped: {type(exc).__name__}: {exc}', flush=True)
         return 1
     finally:
-        if log is not None:
-            log.close()
-        if connection is not None:
+        try:
             try:
-                with rpc_deadline(min(args.rpc_timeout, 3)):
-                    connection.close()
-            except Exception as exc:
-                print(f'Connection close: {type(exc).__name__}: {exc}', flush=True)
+                if log is not None:
+                    log.close()
+            finally:
+                if connection is not None:
+                    try:
+                        with rpc_deadline(min(args.rpc_timeout, 3)):
+                            connection.close()
+                    except Exception as exc:
+                        print(f'Connection close: {type(exc).__name__}: {exc}', flush=True)
+        finally:
+            if ownership is not None:
+                ownership.release()
 
 
 if __name__ == '__main__':

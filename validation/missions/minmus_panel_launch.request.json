@@ -1,0 +1,134 @@
+{
+  "validated_payload": {
+    "target": "Minmus",
+    "target_altitude_m": 60000.0
+  },
+  "mode": "active_pad",
+  "accepted_at": "2026-10-18T22:16:43.678309+00:00",
+  "preflight": {
+    "ready": true,
+    "failures": [],
+    "supported_profile": "OrbiterRL Transfer",
+    "profile_scope": "Known 20-part stock transfer craft; this signature does not qualify arbitrary mass-matched vessels.",
+    "profile_sha256": "e1d80e9e50c17c19ac8800f732bca2f18a7fb0d66084973bcbafc271de9e3b32",
+    "vessel": "OrbiterRL Transfer",
+    "situation": "VesselSituation.pre_launch",
+    "body": "Kerbin",
+    "mass": 14310.0,
+    "expected_mass": 14310.0,
+    "current_stage": 4,
+    "part_names": [
+      "Decoupler.1",
+      "Decoupler.1",
+      "basicFin",
+      "basicFin",
+      "basicFin",
+      "basicFin",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "fuelTankSmall",
+      "liquidEngine2",
+      "liquidEngine3.v2",
+      "mk1pod.v2",
+      "parachuteSingle"
+    ],
+    "engines": [
+      {
+        "name": "liquidEngine2",
+        "activation_stage": 3,
+        "decouple_stage": 2,
+        "propellants": [
+          "LiquidFuel",
+          "Oxidizer"
+        ],
+        "active": false,
+        "has_fuel": true,
+        "can_shutdown": true,
+        "available_thrust": 168404.96875,
+        "thrust_limit": 1.0,
+        "max_vacuum_thrust": 215000.0,
+        "vacuum_specific_impulse": 320.0
+      },
+      {
+        "name": "liquidEngine3.v2",
+        "activation_stage": 2,
+        "decouple_stage": 1,
+        "propellants": [
+          "LiquidFuel",
+          "Oxidizer"
+        ],
+        "active": false,
+        "has_fuel": true,
+        "can_shutdown": true,
+        "available_thrust": 15104.31640625,
+        "thrust_limit": 1.0,
+        "max_vacuum_thrust": 60000.0,
+        "vacuum_specific_impulse": 345.0
+      }
+    ],
+    "decouplers": [
+      {
+        "name": "Decoupler.1",
+        "activation_stage": 1,
+        "decouple_stage": 1
+      },
+      {
+        "name": "Decoupler.1",
+        "activation_stage": 2,
+        "decouple_stage": 2
+      }
+    ],
+    "crew_names": [
+      "Valentina Kerman"
+    ],
+    "control_state": "full",
+    "control_source": "kerbal",
+    "controlling_part": {
+      "name": "mk1pod.v2",
+      "title": "Mk1 Command Pod",
+      "connection_object": "<SpaceCenter.Part remote object #1274>"
+    },
+    "ut": 37301.73838866639,
+    "fuel_stage_masses": [
+      6000.0,
+      4000.0
+    ]
+  },
+  "worker_argv": [
+    "/Users/cicm/KSP_RL_Orbiter/.venv/bin/python",
+    "-m",
+    "orbiter.mission_live",
+    "--fly",
+    "--launch-active",
+    "--launch-model",
+    "/Users/cicm/KSP_RL_Orbiter/models/transfer_ascent_ppo.zip",
+    "--capture-model",
+    "/Users/cicm/KSP_RL_Orbiter/models/moon_capture.zip",
+    "--stage-plan",
+    "3,2",
+    "--fuel-stages",
+    "2,1",
+    "--target",
+    "Minmus",
+    "--target-altitude",
+    "60000.0",
+    "--output-dir",
+    "/Users/cicm/KSP_RL_Orbiter/runs/control/20261018T221643Z-e1f3a068",
+    "--address",
+    "127.0.0.1",
+    "--rpc-port",
+    "50000",
+    "--rpc-timeout",
+    "5.0",
+    "--wall-timeout",
+    "2400"
+  ],
+  "job_id": "20261018T221643Z-e1f3a068"
+}

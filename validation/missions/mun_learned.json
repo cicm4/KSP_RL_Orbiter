@@ -1,0 +1,263 @@
+{
+  "success": true,
+  "source": "actual_ksp_krpc",
+  "mode": "fly",
+  "target": "Mun",
+  "target_altitude": 50000.0,
+  "capture_controller": "learned_capture_policy",
+  "end_to_end_from_launch_verified": false,
+  "system_catalog_sha256": "f7a525379520559efb4ecf529fb4f65ed45b0fa0f7063a66f0cd146d756823bd",
+  "capture_model_sha256": "8be91bece6dee9188144f6a166eb49f1949639bb77fa7bef1b2cb3a0cd10547a",
+  "capture_model": "/Users/cicm/KSP_RL_Orbiter/runs/capture_live_arrival_v2_dagger/arrival_ppo_capture.zip",
+  "capture_metadata_sha256": "10a219a9991e7dbbb3169f4249c6e2f4a82c8d558857f7bb32e6598a0d57eed0",
+  "capture_model_task": "orbital_capture_v2",
+  "capture_model_num_timesteps": 0,
+  "separate_ascent_record": "/Users/cicm/KSP_RL_Orbiter/runs/missions/live_transfer_ascent_01.jsonl",
+  "separate_ascent_record_sha256": "1af5a749fda1599ef7e04cb6ad77f98bbb0830ad0f2f5ac1d2714ed1c04f815d",
+  "mission": {
+    "success": true,
+    "scope": "Actual KSP parking orbit to selected destination orbit; ascent proof is separate.",
+    "end_to_end_from_launch_verified": false,
+    "handoffs": [
+      {
+        "stage": "actual_target_soi",
+        "body": "Mun",
+        "ut": 28130.430019557298
+      },
+      {
+        "stage": "actual_target_orbit",
+        "ut": 34140.477646487634,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54988.104780527035,
+        "periapsis": 49307.43790952719,
+        "eccentricity": 0.011264558954254425,
+        "semi_major_axis": 252147.7713450271,
+        "energy": -129167.10937660516,
+        "period": 3117.0519045706337,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      }
+    ],
+    "plan": {
+      "source": "Kerbin",
+      "target": "Mun",
+      "kind": "direct_child",
+      "departure_ut": 6533.15601035874,
+      "arrival_ut": 34650.55110989765,
+      "departure_position": [
+        681672.0263045164,
+        1043.8699395665612,
+        1863.7240562480001
+      ],
+      "departure_velocity": [
+        -88.05987607633858,
+        -3.8294414806493746,
+        2317.8879779999775
+      ],
+      "delta_v": [
+        -46.918305092631755,
+        -32.605747831929826,
+        806.918245532826
+      ],
+      "arrival_vinf": 363.6400117392503,
+      "estimated_capture_delta_v": 297.8507643314429,
+      "target_altitude": 50000.0,
+      "target_periapsis_radius": 250000.0,
+      "aim_offset": [
+        554546.5732921041,
+        0.0,
+        -35888.29909198295
+      ],
+      "route": [
+        "Kerbin",
+        "Mun"
+      ],
+      "assumptions": [
+        "Zero-revolution Lambert transfer in the parent two-body field.",
+        "Gravitational focusing uses an asymptotic B-plane approximation.",
+        "Actual KSP encounter/periapsis and finite-burn errors require live verification."
+      ],
+      "departure_delta_v": 808.9385125695393,
+      "estimated_total_delta_v": 1106.7892769009823,
+      "actual_ksp_verified": false
+    },
+    "budget": {
+      "available_delta_v": 1587.1744775834657,
+      "estimated_required_delta_v": 1206.7892769009823,
+      "reserve_delta_v": 100.0,
+      "remaining_margin": 380.3852006824834,
+      "limitation": "Two-body impulse estimate; finite burns and corrections can cost more."
+    },
+    "refined_budget": {
+      "available_delta_v": 1587.1744775834657,
+      "estimated_required_delta_v": 1206.4359876330293,
+      "reserve_delta_v": 100.0,
+      "remaining_margin": 380.73848995043636,
+      "limitation": "Two-body impulse estimate; finite burns and corrections can cost more."
+    },
+    "patched_conic_prediction": {
+      "encounter": true,
+      "target": "Mun",
+      "periapsis": 50890.26699978346,
+      "eccentricity": 1.250795025068082,
+      "patches": [
+        {
+          "body": "Kerbin",
+          "periapsis": 80532.51453918417,
+          "apoapsis": 10907394.458814513,
+          "eccentricity": 0.8883267817362176
+        },
+        {
+          "body": "Mun",
+          "periapsis": 50890.26699978346,
+          "apoapsis": -2451649.787103308,
+          "eccentricity": 1.250795025068082
+        }
+      ],
+      "offset_scale": 1.09375,
+      "actual_node_delta_v": 808.5852233015887,
+      "periapsis_error_m": 890.26699978346,
+      "verified_by": "actual_ksp_patched_conic_node"
+    },
+    "departure": {
+      "success": true,
+      "termination_reason": "node_complete",
+      "controller": "deterministic_node_executor",
+      "cleanup_errors": [],
+      "samples": 514,
+      "tolerance_m_s": 0.1,
+      "body": "Kerbin",
+      "node_ut": 6533.15601035874,
+      "planned_delta_v": 808.5852233015887,
+      "initial_remaining_delta_v": 808.5852233019319,
+      "initial_mass_kg": 3165.205322265625,
+      "available_delta_v": 1587.1744775834657,
+      "reserve_delta_v": 0.0,
+      "estimated_full_throttle_seconds": 37.94134796878154,
+      "planned_burn_start_ut": 6514.185336374349,
+      "actual_burn_start_ut": 6514.1863476813005,
+      "remaining_delta_v": 0.08780950174290965,
+      "final_ut": 6556.246347682219,
+      "final_mass_kg": 2492.029052734375,
+      "propellant_consumed_kg": 673.17626953125
+    },
+    "periapsis_correction": {
+      "success": true,
+      "termination_reason": "node_complete",
+      "controller": "deterministic_node_executor",
+      "cleanup_errors": [],
+      "samples": 120,
+      "tolerance_m_s": 0.1,
+      "body": "Mun",
+      "node_ut": 28310.430019557298,
+      "planned_delta_v": 3.321952218234811,
+      "initial_remaining_delta_v": 3.321952218235144,
+      "initial_mass_kg": 2492.027587890625,
+      "available_delta_v": 778.1568187254346,
+      "reserve_delta_v": 0.0,
+      "estimated_full_throttle_seconds": 0.13790556253765876,
+      "planned_burn_start_ut": 28310.36106677603,
+      "actual_burn_start_ut": 28310.36344729217,
+      "remaining_delta_v": 0.08816509975847692,
+      "final_ut": 28313.66344729224,
+      "final_mass_kg": 2489.646240234375,
+      "propellant_consumed_kg": 2.38134765625
+    },
+    "capture": {
+      "success": true,
+      "controller": "learned_capture_policy",
+      "termination_reason": "target_orbit",
+      "steps": 73,
+      "final_orbit": {
+        "ut": 34140.477646487634,
+        "body": "Mun",
+        "vessel": "OrbiterRL Transfer",
+        "apoapsis": 54988.104780527035,
+        "periapsis": 49307.43790952719,
+        "eccentricity": 0.011264558954254425,
+        "semi_major_axis": 252147.7713450271,
+        "energy": -129167.10937660516,
+        "period": 3117.0519045706337,
+        "throttle": 0.0,
+        "situation": "VesselSituation.orbiting"
+      },
+      "cleanup_errors": []
+    },
+    "independent_coast": {
+      "success": true,
+      "requested_period_s": 3117.0519045706337,
+      "observed_coast_s": 3117.0607421858294,
+      "failures": [],
+      "samples": [
+        {
+          "ut": 34140.477646487634,
+          "body": "Mun",
+          "vessel": "OrbiterRL Transfer",
+          "apoapsis": 54988.104780527035,
+          "periapsis": 49307.43790952719,
+          "eccentricity": 0.011264558954254425,
+          "semi_major_axis": 252147.7713450271,
+          "energy": -129167.10937660516,
+          "period": 3117.0519045706337,
+          "throttle": 0.0,
+          "situation": "VesselSituation.orbiting"
+        },
+        {
+          "ut": 34919.751123049726,
+          "body": "Mun",
+          "vessel": "OrbiterRL Transfer",
+          "apoapsis": 54988.105915139604,
+          "periapsis": 49307.43641913906,
+          "eccentricity": 0.011264564167483877,
+          "semi_major_axis": 252147.77116713935,
+          "energy": -129167.10946773128,
+          "period": 3117.0519012720597,
+          "throttle": 0.0,
+          "situation": "VesselSituation.orbiting"
+        },
+        {
+          "ut": 35699.00704101806,
+          "body": "Mun",
+          "vessel": "OrbiterRL Transfer",
+          "apoapsis": 54988.10497215533,
+          "periapsis": 49307.437116807356,
+          "eccentricity": 0.011264560919608231,
+          "semi_major_axis": 252147.77104448134,
+          "energy": -129167.109530565,
+          "period": 3117.0518989976117,
+          "throttle": 0.0,
+          "situation": "VesselSituation.orbiting"
+        },
+        {
+          "ut": 36478.286376955155,
+          "body": "Mun",
+          "vessel": "OrbiterRL Transfer",
+          "apoapsis": 54988.104168699734,
+          "periapsis": 49307.43767978938,
+          "eccentricity": 0.011264558215382884,
+          "semi_major_axis": 252147.77092424454,
+          "energy": -129167.1095921584,
+          "period": 3117.0518967680596,
+          "throttle": 0.0,
+          "situation": "VesselSituation.orbiting"
+        },
+        {
+          "ut": 37257.53838867346,
+          "body": "Mun",
+          "vessel": "OrbiterRL Transfer",
+          "apoapsis": 54988.10495201056,
+          "periapsis": 49307.43675459517,
+          "eccentricity": 0.011264561606456454,
+          "semi_major_axis": 252147.77085330285,
+          "energy": -129167.10962849953,
+          "period": 3117.0518954525883,
+          "throttle": 0.0,
+          "situation": "VesselSituation.orbiting"
+        }
+      ],
+      "scope": "One actual KSP orbital period with four on-rails coast probes, throttle zero and autopilot off."
+    },
+    "cleanup_errors": []
+  }
+}

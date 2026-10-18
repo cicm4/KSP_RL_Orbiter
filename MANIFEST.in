@@ -1,0 +1,4 @@
+include *.command
+include tests/*.cs tests/*.json
+recursive-include models *.zip *.json
+recursive-include validation *.py *.json *.jsonl *.gz
