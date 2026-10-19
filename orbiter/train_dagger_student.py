@@ -161,8 +161,9 @@ def collect_rollouts(model, specs, *, device, beta, seed, repeats=1, verify_witn
             if model is not None:
                 raise ValueError("feedback witness verification must use the teacher alone")
             labels = teacher.cpu()
+            finished = done.cpu().tolist()
             for index, spec in enumerate(specs):
-                if not bool(done[index]):
+                if not finished[index]:
                     expected = spec.trajectory.teacher_actions
                     if step >= len(expected) or not torch.allclose(labels[index], expected[step], atol=1e-5, rtol=0):
                         raise ValueError("feedback parameters do not reproduce their qualified witness")

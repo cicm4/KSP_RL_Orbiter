@@ -170,6 +170,75 @@ def replay_labels(config, actions, qualification):
     )
 
 
+@torch.no_grad()
+def replay_labels_batch(configs, actions, qualifications):
+    """Reconstruct independent ordered labels in compatible physics batches.
+
+    Scalar/coast qualification remains the caller's responsibility. A batch
+    shares only the global values required by ``load_configs``; craft, targets,
+    stage counts and witness lengths remain independent. Completed rows receive
+    zero-duration padded steps and contribute no further labels.
+    """
+    configs, actions, qualifications = tuple(configs), tuple(actions), tuple(qualifications)
+    if not configs or len(configs) != len(actions) or len(configs) != len(qualifications):
+        raise ValueError("provide a config, action witness and qualification for each craft")
+    commands = tuple(torch.as_tensor(row).detach().cpu() for row in actions)
+    for config, row in zip(configs, commands):
+        if (
+            not isinstance(config, EnvConfig) or row.ndim != 2 or row.shape[1] != 2
+            or not len(row) or not row.is_floating_point()
+            or not bool(torch.isfinite(row).all()) or bool((row.abs() > 1).any())
+        ):
+            raise ValueError("teacher actions must be a bounded finite ordered [steps,2] array")
+    shared = (
+        "mu", "radius", "rotation_period", "atmosphere_depth", "atmosphere",
+        "control_dt", "physics_dt", "max_time", "gamma", "orbit_tolerance",
+    )
+    groups = {}
+    for index, config in enumerate(configs):
+        key = json.dumps({name: getattr(config, name) for name in shared}, sort_keys=True, allow_nan=False)
+        groups.setdefault(key, []).append(index)
+    trajectories = [None] * len(configs)
+    for indices in groups.values():
+        env = BatchedAeroAscent(len(indices), seed=0)
+        env.load_configs([configs[index] for index in indices])
+        parameters = torch.tensor(DEFAULT, dtype=env.dtype).expand(env.count, -1)
+        lengths = torch.tensor([len(commands[index]) for index in indices])
+        steps = int(lengths.max())
+        padded = torch.zeros(steps, env.count, 2, dtype=env.dtype)
+        for world, index in enumerate(indices):
+            padded[:lengths[world], world] = commands[index]
+        observations = torch.empty(steps, env.count, OBSERVATIONS)
+        baseline_actions = torch.empty(steps, env.count, 2)
+        done = torch.zeros(env.count, dtype=torch.bool)
+        for step in range(steps):
+            observations[step] = env.observation()
+            baseline_actions[step] = guidance_action(env, parameters)
+            _, _, terminated, truncated, info = env.step(padded[step])
+            ended = terminated | truncated
+            if bool((~done & ended & ((lengths != step + 1) | ~info["success"])).any()):
+                raise ValueError("teacher actions do not finish the same successful batched episode")
+            if bool((~done & ~ended & (lengths == step + 1)).any()):
+                raise ValueError("teacher actions end before a successful terminal")
+            done |= ended
+            # step() has no persistent done mask. Expiring only completed worlds
+            # makes every subsequent padded integration interval exactly zero.
+            env.time[done] = env.max_time
+        if not bool(done.all()):
+            raise ValueError("teacher actions end before a successful terminal")
+        for world, index in enumerate(indices):
+            row = commands[index]
+            trajectories[index] = Trajectory(
+                config=configs[index], config_sha256=config_fingerprint(configs[index]),
+                vehicle_sha256=vehicle_fingerprint(configs[index]),
+                observations=observations[:len(row), world].clone(),
+                previous_actions=torch.cat((torch.zeros(1, 2), row[:-1])),
+                baseline_actions=baseline_actions[:len(row), world].clone(),
+                teacher_actions=row, qualification=qualifications[index],
+            )
+    return tuple(trajectories)
+
+
 def load_witnesses(path, *, max_dynamic_pressure=None, maximum_crafts=None):
     """Accept only exact, freshly scalar-requalified teacher trajectories.
 
@@ -189,7 +258,8 @@ def load_witnesses(path, *, max_dynamic_pressure=None, maximum_crafts=None):
     rows = report.get("results")
     if not isinstance(rows, list) or not rows:
         raise ValueError("teacher report has no craft rows")
-    trajectories, fingerprints, configs, vehicles, reported_qualified = [], [], [], [], []
+    fingerprints, configs, vehicles, reported_qualified = [], [], [], []
+    label_configs, label_actions, label_qualifications = [], [], []
     excluded = 0
     for row in rows:
         config = EnvConfig.from_dict(row["config"])
@@ -203,7 +273,7 @@ def load_witnesses(path, *, max_dynamic_pressure=None, maximum_crafts=None):
         if row.get("qualified") is not True:
             excluded += 1
             continue
-        if maximum_crafts is not None and len(trajectories) >= maximum_crafts:
+        if maximum_crafts is not None and len(label_configs) >= maximum_crafts:
             continue
         actions = torch.as_tensor(row.get("actions"), dtype=torch.float32)
         if (
@@ -216,9 +286,12 @@ def load_witnesses(path, *, max_dynamic_pressure=None, maximum_crafts=None):
         qualification = qualify_witness(config, actions.tolist(), max_dynamic_pressure=pressure)
         if not qualification["qualified"] or qualification["actions_consumed"] != len(actions):
             raise ValueError("claimed teacher failed fresh scalar replay/coast or pressure gate")
-        trajectories.append(replay_labels(config, actions, qualification))
-    if not trajectories:
+        label_configs.append(config)
+        label_actions.append(actions)
+        label_qualifications.append(qualification)
+    if not label_configs:
         raise ValueError("teacher report has no qualified labels")
+    trajectories = replay_labels_batch(label_configs, label_actions, label_qualifications)
     return WitnessBank(
         tuple(trajectories), tuple(configs), hashlib.sha256(raw).hexdigest(),
         tuple(fingerprints), tuple(vehicles), tuple(reported_qualified), pressure, excluded
@@ -456,8 +529,10 @@ def evaluate_controller(model, bank, *, device="cpu", stop_requested=None):
             action = baseline
         else:
             action, hidden = model.step(env.observation(), previous, baseline, hidden)
-        for index in torch.nonzero(~done).flatten().cpu().tolist():
-            actions[index].append(action[index].cpu().tolist())
+        active_indices = torch.nonzero(~done).flatten().cpu().tolist()
+        action_rows = action.cpu().tolist()
+        for index in active_indices:
+            actions[index].append(action_rows[index])
         _, _, terminated, truncated, _ = env.step(action)
         done |= terminated | truncated
         previous = action
