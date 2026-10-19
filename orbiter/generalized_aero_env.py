@@ -294,6 +294,10 @@ class BatchedAeroAscent(BatchedAscent):
         self.throttle.zero_()
         self.time.zero_()
         self.episode_return.zero_()
+        self.episode_task_return.zero_()
+        self.discounted_task_return.zero_()
+        self.episode_discount.fill_(1)
+        self.steps.zero_()
         upper = self.payload.clone()
         self.ideal_delta_v.zero_()
         for stage in reversed(range(MAX_STAGES)):

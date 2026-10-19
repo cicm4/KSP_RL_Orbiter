@@ -61,7 +61,7 @@ def main():
             assert config.stages
     assert "OrbiterBootstrap" in package.joinpath("ksp_bootstrap.cs").read_text()
     assert "OrbiterAutopilot" in package.joinpath("ksp_autopilot.cs").read_text()
-    for module in ("generalized_env.py", "generalized_aero_env.py", "train_generalized.py", "release_mod.py", "release_install.py"):
+    for module in ("generalized_env.py", "generalized_aero_env.py", "train_generalized.py", "ablation_suite.py", "ascent_planner.py", "release_mod.py", "release_install.py"):
         assert package.joinpath(module).is_file(), module
     assert "Orbiter Autopilot" in package.joinpath("control.html").read_text()
     vehicle_profile = json.loads(package.joinpath("data/transfer_vehicle.json").read_text())

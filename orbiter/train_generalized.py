@@ -37,6 +37,8 @@ from .guidance import expert_action
 _STOP_SIGNAL = None
 _STOP_CHECKPOINT = None
 _PHASE_PROGRESS = {}
+DEADLINE_TASK = "vehicle_conditioned_ascent_deadline_v5"
+AERO_DEADLINE_TASK = "vehicle_conditioned_aero_ascent_deadline_v5"
 
 
 def _request_stop(signum, _frame):
@@ -141,6 +143,8 @@ def load_policy(path, *, device="cpu"):
     )
 
     supported.add((AERO_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA))
+    supported.add((DEADLINE_TASK, OBSERVATIONS, FEATURE_SCHEMA))
+    supported.add((AERO_DEADLINE_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA))
     if (
         record.get("task"),
         contract.get("observations"),
@@ -149,6 +153,20 @@ def load_policy(path, *, device="cpu"):
         raise ValueError("not a vehicle-conditioned ascent checkpoint")
     if contract.get("task", record["task"]) != record["task"]:
         raise ValueError("checkpoint task and contract disagree")
+    if record["task"] in (DEADLINE_TASK, AERO_DEADLINE_TASK):
+        physics = "aero" if record["task"] == AERO_DEADLINE_TASK else "constant-cda"
+        objective = contract.get("objective", {})
+        try:
+            _, _, expected = experiment_contract(
+                contract["curriculum"],
+                physics,
+                deadline_mode=objective["deadline_mode"],
+                timeout_penalty=objective["timeout_penalty"],
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("invalid finite-horizon objective contract") from error
+        if contract != expected:
+            raise ValueError("finite-horizon task/environment contract differs")
     model = VehiclePolicy(record["hidden"], observations=contract["observations"]).to(
         device
     )
@@ -174,6 +192,41 @@ def transfer_aero_policy(path, *, device="cpu"):
             state[key].zero_()
             state[key][:, :OBSERVATIONS].copy_(value)
         else:
+            state[key].copy_(value)
+    target.load_state_dict(state)
+    return target, record
+
+
+def initialize_actor_policy(path, contract, *, seed, device="cpu"):
+    """Explicit actor-only initialization across objectives, with a fresh critic.
+
+    Every ablation arm starts from the same parent actor and the same seeded
+    critic. Neither the parent's critic nor optimizer state crosses this boundary.
+    """
+    source, record = load_policy(path, device=device)
+    from .generalized_aero_env import TASK as AERO_TASK
+
+    if record["task"] not in (TASK, AERO_TASK):
+        raise ValueError("actor initialization requires an original v3/v4 checkpoint")
+    source_physics = "aero" if record["task"] == AERO_TASK else "constant-cda"
+    _, _, expected = experiment_contract(contract["curriculum"], source_physics)
+    if record["contract"] != expected:
+        raise ValueError("actor source must match its original curriculum contract")
+    if source.observations > contract["observations"]:
+        raise ValueError("actor initialization cannot discard source input features")
+    # Linear layers initialize on CPU before the explicit device copy. Isolate
+    # that RNG without touching generators belonging to any other CUDA device.
+    with torch.random.fork_rng(devices=[]):
+        torch.random.default_generator.manual_seed(seed)
+        target = VehiclePolicy(
+            source.hidden, observations=contract["observations"]
+        ).to(device)
+    state = target.state_dict()
+    for key, value in source.state_dict().items():
+        if key == "actor.0.weight":
+            state[key].zero_()
+            state[key][:, : source.observations].copy_(value)
+        elif key.startswith("actor.") or key == "log_std":
             state[key].copy_(value)
     target.load_state_dict(state)
     return target, record
@@ -219,9 +272,17 @@ def evaluate(
     kind="policy",
     physics_dt=0.25,
     export_crafts=False,
+    deadline_mode="truncate",
+    timeout_penalty=0.0,
 ):
     env = make_environment(
-        count, device=device, seed=seed, envelope=envelope, physics_dt=physics_dt
+        count,
+        device=device,
+        seed=seed,
+        envelope=envelope,
+        physics_dt=physics_dt,
+        deadline_mode=deadline_mode,
+        timeout_penalty=timeout_penalty,
     )
     observation = env.observation()
     done = torch.zeros(count, dtype=torch.bool, device=device)
@@ -249,6 +310,9 @@ def evaluate(
                 )
                 if crafts:
                     results[index]["craft"] = crafts[index]
+                    results[index]["craft_sha256"] = hashlib.sha256(
+                        json.dumps(crafts[index], sort_keys=True).encode()
+                    ).hexdigest()
         done |= terminated | truncated
         if bool(done.all()):
             break
@@ -269,6 +333,15 @@ def evaluate(
         failure_counts=dict(
             Counter(str(row["reason"]) for row in results if not row["success"])
         ),
+        objective=dict(deadline_mode=deadline_mode, timeout_penalty=timeout_penalty),
+        mean_discounted_task_return=float(
+            np.mean([row["discounted_task_return"] for row in results])
+        )
+        if "discounted_task_return" in results[0]
+        else None,
+        mean_elapsed=float(np.mean([row["time"] for row in results]))
+        if "time" in results[0]
+        else None,
         elapsed_s=time.monotonic() - start,
         results=results,
         scope="planar sequential-liquid-stage surrogate; no actual KSP evidence",
@@ -360,6 +433,9 @@ def warm_value(model, env, *, steps, updates, batch_size):
     """Fit only the critic to this frozen actor's complete on-policy returns."""
     observations, rewards, terminals, time_limits = [], [], [], []
     observation = env.reset()
+    initial_rollout_sha256 = hashlib.sha256(
+        observation.detach().cpu().numpy().tobytes()
+    ).hexdigest()
     start = time.monotonic()
     for step in range(steps):
         _PHASE_PROGRESS.update(
@@ -376,6 +452,13 @@ def warm_value(model, env, *, steps, updates, batch_size):
             time_limits.append(truncated)
             done = terminated | truncated
             observation = env.reset(done) if bool(done.any()) else next_observation
+    rollout_fingerprints = dict(
+        initial_observation_sha256=initial_rollout_sha256,
+        final_observation_sha256=hashlib.sha256(
+            observation.detach().cpu().numpy().tobytes()
+        ).hexdigest(),
+        deterministic_frozen_actor=True,
+    )
     returns, valid = complete_return_targets(
         torch.stack(rewards),
         torch.stack(terminals),
@@ -386,7 +469,10 @@ def warm_value(model, env, *, steps, updates, batch_size):
     targets = returns[valid]
     if not len(targets):
         return dict(
-            complete_value_targets=0, updates=0, reason="no observed terminal returns"
+            complete_value_targets=0,
+            updates=0,
+            reason="no observed terminal returns",
+            **rollout_fingerprints,
         )
     optimizer = torch.optim.Adam(model.critic.parameters(), lr=3e-4)
     total_loss = torch.zeros((), device=env.device)
@@ -410,6 +496,7 @@ def warm_value(model, env, *, steps, updates, batch_size):
         elapsed_s=time.monotonic() - start,
         actor_updated=False,
         rollout_transitions=steps * env.count,
+        **rollout_fingerprints,
     )
 
 
@@ -428,8 +515,22 @@ def ppo_train(
 ):
     """On-device PPO with proper terminal and time-limit bootstrap separation."""
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    actor_parameters = [*model.actor.parameters(), model.log_std]
+    critic_parameters = list(model.critic.parameters())
+
+    def gradient_norm(parameters):
+        return torch.linalg.vector_norm(
+            torch.stack(
+                [
+                    torch.linalg.vector_norm(parameter.grad.detach())
+                    for parameter in parameters
+                    if parameter.grad is not None
+                ]
+            )
+        )
     observation = env.observation()
     transitions = 0
+    optimizer_steps = 0
     for update in range(updates):
         _PHASE_PROGRESS.update(
             phase="ppo", completed_updates=update, ppo_transitions=transitions
@@ -482,6 +583,14 @@ def ppo_train(
             gae = delta + env.gamma * 0.95 * (~b["done"][step]).float() * gae
             advantage[step] = gae
         returns = advantage + b["values"]
+        td_error = b["rewards"] + env.gamma * b["next_values"] - b["values"]
+        return_variance = returns.var(unbiased=False)
+        explained_variance = (
+            1 - (returns - b["values"]).var(unbiased=False) / return_variance
+            if bool(return_variance > 0)
+            else torch.full((), float("nan"), device=env.device)
+        )
+        action_saturation = (b["latent"].tanh().abs() >= 0.98).float().mean()
         flat = {key: val.flatten(0, 1) for key, val in b.items()}
         advantage = advantage.flatten()
         advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
@@ -490,6 +599,11 @@ def ppo_train(
         total_kl = torch.zeros_like(total_loss)
         total_clipped = torch.zeros_like(total_loss)
         maximum_kl = torch.zeros_like(total_loss)
+        total_actor_loss = torch.zeros_like(total_loss)
+        total_critic_loss = torch.zeros_like(total_loss)
+        total_grad_norm = torch.zeros_like(total_loss)
+        total_actor_grad_norm = torch.zeros_like(total_loss)
+        total_critic_grad_norm = torch.zeros_like(total_loss)
         checked_batches = 0
         loss_count = 0
         early_stopped = False
@@ -530,10 +644,18 @@ def ppo_train(
                 loss = actor_loss + 0.5 * value_loss
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+                actor_grad_norm = gradient_norm(actor_parameters)
+                critic_grad_norm = gradient_norm(critic_parameters)
+                grad_norm = nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 optimizer.step()
                 total_loss += loss.detach()
+                total_actor_loss += actor_loss.detach()
+                total_critic_loss += value_loss.detach()
+                total_grad_norm += grad_norm.detach()
+                total_actor_grad_norm += actor_grad_norm
+                total_critic_grad_norm += critic_grad_norm
                 loss_count += 1
+                optimizer_steps += 1
             if not math.isfinite(float(maximum_kl)):
                 raise FloatingPointError(
                     "PPO update produced a nonfinite KL divergence"
@@ -546,7 +668,10 @@ def ppo_train(
             )
         transitions += horizon * env.count
         _PHASE_PROGRESS.update(
-            phase="ppo", completed_updates=update + 1, ppo_transitions=transitions
+            phase="ppo",
+            completed_updates=update + 1,
+            ppo_transitions=transitions,
+            cumulative_optimizer_steps=optimizer_steps,
         )
         _check_stop()
         log(
@@ -556,6 +681,16 @@ def ppo_train(
             completed_episodes=int(episode_count),
             completed_successes=int(successes),
             loss=float(total_loss / loss_count),
+            actor_loss=float(total_actor_loss / loss_count),
+            critic_loss=float(total_critic_loss / loss_count),
+            gradient_norm_before_clip=float(total_grad_norm / loss_count),
+            actor_gradient_norm_before_clip=float(total_actor_grad_norm / loss_count),
+            critic_gradient_norm_before_clip=float(total_critic_grad_norm / loss_count),
+            explained_variance=float(explained_variance),
+            mean_td_error=float(td_error.mean()),
+            mean_absolute_td_error=float(td_error.abs().mean()),
+            action_tanh_saturation_fraction=float(action_saturation),
+            cumulative_optimizer_steps=optimizer_steps,
             approximate_kl=float(total_kl / checked_batches),
             maximum_minibatch_kl=float(maximum_kl),
             clip_fraction=float(total_clipped / checked_batches),
@@ -573,11 +708,26 @@ def ppo_train(
 
 
 def cpu_parity(
-    model, *, envelope, seed, count=8, steps=120, physics_dt=0.25, device="cpu"
+    model,
+    *,
+    envelope,
+    seed,
+    count=8,
+    steps=120,
+    physics_dt=0.25,
+    device="cpu",
+    deadline_mode="truncate",
+    timeout_penalty=0.0,
 ):
     """Independent scalar RK4 implementation, same frozen craft/actions."""
     env = make_environment(
-        count, seed=seed, envelope=envelope, physics_dt=physics_dt, device=device
+        count,
+        seed=seed,
+        envelope=envelope,
+        physics_dt=physics_dt,
+        device=device,
+        deadline_mode=deadline_mode,
+        timeout_penalty=timeout_penalty,
     )
     references = [env.cpu_reference(index) for index in range(count)]
     completed = [False] * count
@@ -635,7 +785,9 @@ def cpu_parity(
     )
 
 
-def evaluate_captured_transfer(model, *, count=8, seed=3000000):
+def evaluate_captured_transfer(
+    model, *, count=8, seed=3000000, deadline_mode="truncate", timeout_penalty=0.0
+):
     """Real captured craft coefficients in the scalar surrogate, never KSP proof.
 
     Its fitted angle-dependent drag and lift are intentionally retained. They
@@ -674,6 +826,10 @@ def evaluate_captured_transfer(model, *, count=8, seed=3000000):
                             periapsis=info["periapsis"],
                             apoapsis=info["apoapsis"],
                             time=info["time"],
+                            # The scalar reference retains its original API;
+                            # objective semantics are explicitly annotated.
+                            deadline_mode=deadline_mode,
+                            timeout_penalty=timeout_penalty,
                         )
                     )
                     break
@@ -687,14 +843,23 @@ def evaluate_captured_transfer(model, *, count=8, seed=3000000):
             lift_area=config.lift_area,
         ),
         outside_batched_constant_cda_physics=model.observations == OBSERVATIONS,
+        objective_comparison="physical trajectory and terminal success only; scalar reward unchanged",
         checkpoint_selection=False,
         live_ksp_validated=False,
         **results,
     )
 
 
-def experiment_contract(curriculum, physics="constant-cda"):
-    """Keep the original v3 contract stable; aero is a distinct v4 task."""
+def experiment_contract(
+    curriculum, physics="constant-cda", *, deadline_mode="truncate", timeout_penalty=0.0
+):
+    """Preserve v3/v4 defaults; finite mission deadlines have a distinct v5 task."""
+    if deadline_mode not in ("truncate", "terminal"):
+        raise ValueError("deadline mode must be truncate or terminal")
+    if not math.isfinite(timeout_penalty) or timeout_penalty > 0:
+        raise ValueError("timeout penalty must be finite and nonpositive")
+    if deadline_mode == "truncate" and timeout_penalty != 0:
+        raise ValueError("truncation cannot have a terminal timeout penalty")
     envelope = VehicleEnvelope(stages_min=2, stages_max=3)
     if curriculum == "stock":
         envelope = replace(
@@ -766,6 +931,20 @@ def experiment_contract(curriculum, physics="constant-cda"):
         contract["limitations"].append(
             "No Mach-, part- or stage-dependent aerodynamic coefficients"
         )
+    if deadline_mode == "terminal":
+        contract.update(
+            task=AERO_DEADLINE_TASK if physics == "aero" else DEADLINE_TASK,
+            objective_version=1,
+            objective=dict(
+                deadline_mode=deadline_mode,
+                timeout_penalty=float(timeout_penalty),
+                max_time=1600.0,
+                deadline_bootstrap=False,
+                terminal_potential=0.0,
+                task_reward="physical_terminal_plus_time_plus_deadline_penalty",
+                shaping="gamma_phi_next_minus_phi_with_zero_terminal_potential",
+            ),
+        )
     return envelope, four_stage, contract
 
 
@@ -775,6 +954,8 @@ def main(argv=None):
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--seed", type=int, default=101)
+    parser.add_argument("--validation-seed", type=int)
+    parser.add_argument("--test-seed", type=int)
     parser.add_argument("--worlds", type=int, default=1024)
     parser.add_argument("--label-steps", type=int, default=600)
     parser.add_argument("--bc-updates", type=int, default=2500)
@@ -797,6 +978,18 @@ def main(argv=None):
         "--transfer-from",
         type=Path,
         help="Initialize v4 aero from v3 weights with zero new input columns",
+    )
+    parser.add_argument(
+        "--actor-from",
+        type=Path,
+        help="Copy only a strict v3/v4 actor and log-std; initialize a fresh seeded critic",
+    )
+    parser.add_argument(
+        "--deadline-mode", choices=("truncate", "terminal"), default="truncate"
+    )
+    parser.add_argument("--timeout-penalty", type=float, default=0.0)
+    parser.add_argument(
+        "--evaluation-suite", choices=("full", "ablation"), default="full"
     )
     parser.add_argument(
         "--ppo-only",
@@ -834,19 +1027,43 @@ def main(argv=None):
     if not math.isfinite(args.learning_rate) or args.learning_rate <= 0:
         parser.error("learning rate must be positive and finite")
     if (
-        sum(bool(item) for item in (args.evaluate, args.warm_start, args.transfer_from))
+        sum(
+            bool(item)
+            for item in (args.evaluate, args.warm_start, args.transfer_from, args.actor_from)
+        )
         > 1
     ):
         parser.error(
-            "evaluation, warm start and transfer initialization are mutually exclusive"
+            "evaluation, warm start, transfer and actor initialization are mutually exclusive"
         )
     if args.transfer_from and args.physics != "aero":
         parser.error("transfer initialization requires --physics aero")
-    if args.ppo_only and not (args.warm_start or args.transfer_from):
+    if args.actor_from and not args.ppo_only:
+        parser.error("actor-only initialization requires --ppo-only")
+    if args.transfer_from and args.deadline_mode != "truncate":
+        parser.error("a new objective requires --actor-from with a fresh critic")
+    if args.ppo_only and not (args.warm_start or args.transfer_from or args.actor_from):
         parser.error("PPO-only training requires initialized checkpoint weights")
     if args.ppo_only and not args.ppo_updates:
         parser.error("PPO-only training requires positive PPO updates")
-    envelope, holdout, contract = experiment_contract(args.curriculum, args.physics)
+    try:
+        envelope, holdout, contract = experiment_contract(
+            args.curriculum,
+            args.physics,
+            deadline_mode=args.deadline_mode,
+            timeout_penalty=args.timeout_penalty,
+        )
+    except ValueError as error:
+        parser.error(str(error))
+    validation_seed = (
+        args.validation_seed if args.validation_seed is not None else args.seed + 500000
+    )
+    test_seed = args.test_seed if args.test_seed is not None else args.seed + 1000000
+    if validation_seed == test_seed:
+        parser.error("checkpoint selection and final test seeds must differ")
+    environment_objective = dict(
+        deadline_mode=args.deadline_mode, timeout_penalty=args.timeout_penalty
+    )
     if args.run_dir.exists() and any(args.run_dir.iterdir()):
         parser.error("run directory must be empty; warm restart into a new directory")
     initial_model = initial_record = None
@@ -869,6 +1086,13 @@ def main(argv=None):
             parser.error(
                 "transfer source must match the original v3 curriculum contract"
             )
+    elif args.actor_from:
+        try:
+            initial_model, initial_record = initialize_actor_policy(
+                args.actor_from, contract, seed=args.seed, device=args.device
+            )
+        except ValueError as error:
+            parser.error(str(error))
     args.run_dir.mkdir(parents=True, exist_ok=True)
     events = (args.run_dir / "events.jsonl").open("a", buffering=1)
 
@@ -918,6 +1142,8 @@ def main(argv=None):
         ppo_transitions=0,
         seed=args.seed,
         selected_phase="initial",
+        selection_validation_seed=validation_seed,
+        final_test_seed=test_seed,
         ppo_optimization=dict(
             learning_rate=args.learning_rate,
             target_kl=args.target_kl,
@@ -966,22 +1192,47 @@ def main(argv=None):
         _STOP_CHECKPOINT = save_interrupted
         signal.signal(signal.SIGTERM, _request_stop)
         signal.signal(signal.SIGINT, _request_stop)
-    if args.warm_start or args.transfer_from:
-        source = args.warm_start or args.transfer_from
+    if args.warm_start or args.transfer_from or args.actor_from:
+        source = args.warm_start or args.transfer_from or args.actor_from
         ancestry["upstream"] = dict(
             sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
             ancestry=initial_record["ancestry"],
             source_contract=initial_record["contract"],
-            initialization="zero_padded_v3_to_v4_inputs"
-            if args.transfer_from
-            else "matching_contract_warm_restart",
+            initialization=(
+                "actor_only_fresh_seeded_critic"
+                if args.actor_from
+                else "zero_padded_v3_to_v4_inputs"
+                if args.transfer_from
+                else "matching_contract_warm_restart"
+            ),
             optimizer_state_restored=False,
+            critic_restored=not bool(args.actor_from),
         )
+        if args.actor_from:
+            ancestry["initialization"] = dict(
+                actor_copied=True,
+                log_std_copied=True,
+                critic="fresh_seeded",
+                critic_seed=args.seed,
+                critic_sha256=hashlib.sha256(
+                    b"".join(
+                        value.detach().cpu().numpy().tobytes()
+                        for value in model.critic.state_dict().values()
+                    )
+                ).hexdigest(),
+                value_fit_seed=args.seed + 6000000,
+                ppo_sampling_seed=args.seed + 7000000,
+                optimizer_state_restored=False,
+            )
     if args.evaluate:
         ancestry = initial_record["ancestry"]
     else:
         env = make_environment(
-            args.worlds, device=args.device, seed=args.seed, envelope=envelope
+            args.worlds,
+            device=args.device,
+            seed=args.seed,
+            envelope=envelope,
+            **environment_objective,
         )
         optimizer = torch.optim.Adam(model.actor.parameters(), lr=3e-4)
         best_score = -1.0
@@ -989,12 +1240,16 @@ def main(argv=None):
         def select(phase, ppo_steps=0):
             nonlocal best_score
             ancestry["ppo_transitions"] = ppo_steps
+            ancestry["ppo_optimizer_steps"] = (
+                _PHASE_PROGRESS.get("cumulative_optimizer_steps", 0) if ppo_steps else 0
+            )
             result = evaluate(
                 model,
                 count=args.eval_worlds,
                 device=args.device,
-                seed=args.seed + 500000,
+                seed=validation_seed,
                 envelope=envelope,
+                **environment_objective,
             )
             write_json(args.run_dir / f"validation_{phase}.json", result)
             log(
@@ -1015,7 +1270,7 @@ def main(argv=None):
                 {**ancestry, "current_phase": phase, "selected": is_selected},
             )
 
-        if args.warm_start or args.transfer_from:
+        if args.warm_start or args.transfer_from or args.actor_from:
             select("warm_start")
         if not args.ppo_only:
             original_obs, original_actions, summary = collect_labels(
@@ -1068,6 +1323,10 @@ def main(argv=None):
             model, record = load_policy(args.run_dir / "best.pt", device=args.device)
             ancestry = record["ancestry"]
             if args.value_updates:
+                if args.actor_from:
+                    # Paired arms use the same deterministic actor/world rollout
+                    # and identically seeded critic minibatch sampling.
+                    torch.manual_seed(args.seed + 6000000)
                 value_summary = warm_value(
                     model,
                     env,
@@ -1078,6 +1337,8 @@ def main(argv=None):
                 ancestry["value_warm_start"] = value_summary
                 log("value_warm_start", **value_summary)
             env.reset()
+            if args.actor_from:
+                torch.manual_seed(args.seed + 7000000)
             ppo_train(
                 model,
                 env,
@@ -1094,7 +1355,7 @@ def main(argv=None):
         ancestry = record["ancestry"]
     # Final evaluations have fresh seeds and cannot select a new checkpoint.
     final = {}
-    for label, selected_envelope, count in (
+    cases = (
         ("nominal", envelope, args.eval_worlds * 2),
         (
             "four_stage_fresh_crafts"
@@ -1148,25 +1409,21 @@ def main(argv=None):
             ),
             args.eval_worlds,
         ),
+    )
+    for label, selected_envelope, count in (
+        cases[:2] if args.evaluation_suite == "ablation" else cases
     ):
         result = evaluate(
             model,
             count=count,
             device=args.device,
-            seed=args.seed + 1000000,
+            seed=test_seed,
             envelope=selected_envelope,
             export_crafts=True,
+            **environment_objective,
         )
-        teacher = evaluate(
-            model,
-            count=count,
-            device=args.device,
-            seed=args.seed + 1000000,
-            envelope=selected_envelope,
-            kind="teacher",
-        )
+        result["checkpoint_selection"] = False
         write_json(args.run_dir / f"test_{label}.json", result)
-        write_json(args.run_dir / f"teacher_{label}.json", teacher)
         final[label] = {
             key: result[key]
             for key in (
@@ -1177,16 +1434,44 @@ def main(argv=None):
                 "failure_counts",
             )
         }
-        final[label]["teacher_successes"] = teacher["successes"]
+        for key in ("mean_discounted_task_return", "mean_elapsed"):
+            if key in result:
+                final[label][key] = result[key]
+        if args.evaluation_suite == "full":
+            teacher = evaluate(
+                model,
+                count=count,
+                device=args.device,
+                seed=test_seed,
+                envelope=selected_envelope,
+                kind="teacher",
+                **environment_objective,
+            )
+            write_json(args.run_dir / f"teacher_{label}.json", teacher)
+            final[label]["teacher_successes"] = teacher["successes"]
         log("final_test", case=label, **final[label])
+    if args.evaluation_suite == "ablation":
+        final.update(
+            selected_ancestry=ancestry,
+            live_ksp_validated=False,
+            evaluation_suite="ablation",
+            selection_validation_seed=validation_seed,
+            final_test_seed=test_seed,
+            final_tests_select_checkpoint=False,
+        )
+        write_json(args.run_dir / "summary.json", final)
+        log("complete", **final)
+        events.close()
+        return
     # Smaller physical integration timestep, same fresh craft/seed distribution.
     half = evaluate(
         model,
         count=args.eval_worlds,
         device=args.device,
-        seed=args.seed + 1000000,
+        seed=test_seed,
         envelope=envelope,
         physics_dt=0.125,
+        **environment_objective,
     )
     half["comparison"] = (
         "independent distribution robustness check, not paired same-craft numerical convergence"
@@ -1196,16 +1481,27 @@ def main(argv=None):
         key: half[key] for key in ("episodes", "successes", "success_rate")
     }
     cpu_model, _ = load_policy(args.evaluate or args.run_dir / "best.pt", device="cpu")
-    parity = cpu_parity(cpu_model, envelope=envelope, seed=args.seed + 2000000)
+    parity = cpu_parity(
+        cpu_model,
+        envelope=envelope,
+        seed=test_seed + 1000000,
+        **environment_objective,
+    )
     write_json(args.run_dir / "cpu_parity.json", parity)
     final["cpu_parity"] = parity
     if args.device.startswith("cuda"):
         gpu_parity = cpu_parity(
-            cpu_model, envelope=envelope, seed=args.seed + 2000001, device=args.device
+            cpu_model,
+            envelope=envelope,
+            seed=test_seed + 1000001,
+            device=args.device,
+            **environment_objective,
         )
         write_json(args.run_dir / "gpu_scalar_parity.json", gpu_parity)
         final["gpu_scalar_parity"] = gpu_parity
-    captured = evaluate_captured_transfer(cpu_model, seed=args.seed + 3000000)
+    captured = evaluate_captured_transfer(
+        cpu_model, seed=test_seed + 2000000, **environment_objective
+    )
     write_json(args.run_dir / "test_captured_transfer.json", captured)
     final["captured_transfer"] = dict(
         policy_successes=captured["policy"]["successes"],

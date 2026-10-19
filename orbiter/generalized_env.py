@@ -259,6 +259,11 @@ class BatchedAscent:
     Each sampled craft is a distinct payload/stage/performance descriptor. Ideal
     delta-v and pad TWR are screening lower bounds, not finite-burn feasibility
     proofs. Unsuccessful physically plausible craft remain policy failures.
+
+    The historical ``truncate`` deadline retains the continuation potential for
+    value bootstrapping. An explicit ``terminal`` deadline instead ends the
+    mission, cancels continuation shaping and applies ``timeout_penalty``. Both
+    objectives retain the existing elapsed-time cost and physical-event priority.
     """
 
     def __init__(
@@ -271,6 +276,8 @@ class BatchedAscent:
         physics_dt=0.25,
         max_time=1600.0,
         orbit_tolerance=20000.0,
+        deadline_mode="truncate",
+        timeout_penalty=0.0,
     ):
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError("count must be a positive integer")
@@ -278,12 +285,23 @@ class BatchedAscent:
             raise ValueError("physics_dt must be in (0,2]")
         if not math.isfinite(max_time) or max_time <= 0:
             raise ValueError("max_time must be positive")
+        if deadline_mode not in ("truncate", "terminal"):
+            raise ValueError("deadline_mode must be 'truncate' or 'terminal'")
+        if (
+            isinstance(timeout_penalty, bool)
+            or not math.isfinite(timeout_penalty)
+            or timeout_penalty > 0
+        ):
+            raise ValueError("timeout_penalty must be finite and nonpositive")
+        if deadline_mode == "truncate" and timeout_penalty != 0:
+            raise ValueError("timeout_penalty requires a terminal deadline")
         self.count, self.device = count, torch.device(device)
         self.envelope = envelope or VehicleEnvelope()
         self.generator = torch.Generator(device=self.device).manual_seed(seed)
         self.dtype = torch.float64
         self.physics_dt, self.max_time = physics_dt, max_time
         self.orbit_tolerance = orbit_tolerance
+        self.deadline_mode, self.timeout_penalty = deadline_mode, timeout_penalty
         self.mu, self.radius = 3.5316e12, 600000.0
         self.rotation_period, self.atmosphere_depth = 21549.425, 70000.0
         self.control_dt, self.gamma = 2.0, 0.999
@@ -318,11 +336,15 @@ class BatchedAscent:
             "time",
             "previous_potential",
             "episode_return",
+            "episode_task_return",
+            "discounted_task_return",
+            "episode_discount",
             "ideal_delta_v",
         ):
             setattr(self, name, self.zeros(count))
         self.stage = torch.zeros(count, dtype=torch.long, device=self.device)
         self.stage_count = self.stage.clone()
+        self.steps = self.stage.clone()
         self.reset()
 
     def zeros(self, *shape):
@@ -412,6 +434,10 @@ class BatchedAscent:
         )
         self.pitch[selected], self.throttle[selected], self.time[selected] = 90, 0, 0
         self.episode_return[selected] = 0
+        self.episode_task_return[selected] = 0
+        self.discounted_task_return[selected] = 0
+        self.episode_discount[selected] = 1
+        self.steps[selected] = 0
         self.previous_potential[selected] = self.potential()[selected]
         rejected = torch.zeros(self.count, dtype=torch.bool, device=self.device)
         rejected[selected] = ideal_dv < e.minimum_ideal_delta_v
@@ -682,16 +708,30 @@ class BatchedAscent:
         escape = d["energy"] >= 0
         fuel_empty = (self.stage == self.stage_count - 1) & (self.fuel <= 1e-7)
         terminated = success | impact | escape | fuel_empty
-        truncated = ~terminated & (self.time >= self.max_time - 1e-8)
+        deadline = ~terminated & (self.time >= self.max_time - 1e-8)
+        terminal_reward = torch.where(terminated, torch.where(success, 100, -30), 0)
+        if self.deadline_mode == "terminal":
+            terminated = terminated | deadline
+            truncated = torch.zeros_like(deadline)
+            terminal_reward = torch.where(
+                deadline, self.timeout_penalty, terminal_reward.to(self.dtype)
+            )
+        else:
+            truncated = deadline
         phi = self.potential()
         shaping = self.gamma * torch.where(terminated, 0, phi) - self.previous_potential
-        reward = (
-            shaping
-            + torch.where(terminated, torch.where(success, 100, -30), 0)
-            - 0.003 * elapsed
-        )
+        # Keep the historical operation order for exact v3/v4 default rewards.
+        time_reward = -0.003 * elapsed
+        reward = shaping + terminal_reward - 0.003 * elapsed
+        task_reward = terminal_reward + time_reward
         self.previous_potential = phi
         self.episode_return += reward
+        self.episode_task_return += task_reward
+        # Gamma follows control decisions, as in the shaping term and PPO;
+        # actual elapsed seconds determine only the existing time cost.
+        self.discounted_task_return += self.episode_discount * task_reward
+        self.episode_discount *= self.gamma
+        self.steps += 1
         # Reason codes: success, impact, escape, fuel, time. Success has priority.
         reason = torch.where(
             success,
@@ -700,7 +740,7 @@ class BatchedAscent:
                 impact,
                 2,
                 torch.where(
-                    escape, 3, torch.where(fuel_empty, 4, torch.where(truncated, 5, 0))
+                    escape, 3, torch.where(fuel_empty, 4, torch.where(deadline, 5, 0))
                 ),
             ),
         )
@@ -708,6 +748,14 @@ class BatchedAscent:
             success=success,
             reason=reason,
             episode_return=self.episode_return.clone(),
+            terminal_reward=terminal_reward.to(self.dtype),
+            time_reward=time_reward,
+            task_reward=task_reward,
+            shaping_reward=shaping,
+            elapsed=elapsed,
+            discounted_task_return=self.discounted_task_return.clone(),
+            episode_task_return=self.episode_task_return.clone(),
+            steps=self.steps.clone(),
             time=self.time.clone(),
             apoapsis=d["apoapsis"],
             periapsis=d["periapsis"],

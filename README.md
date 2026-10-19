@@ -221,7 +221,44 @@ optimization epochs; the KL limit is checked before each optimizer step and
 can stop the remaining minibatches.
 Validation frequency is configurable so evaluation need not dominate training.
 
-This is an ascent curriculum for feasible sequential liquid rockets, with
+To compare deadline objectives, run the finite three-arm, three-seed suite on
+two available GPUs:
+
+```sh
+.venv/bin/python -m orbiter.ablation_suite --run-root runs/deadline-ablation --actor-from runs/generalized-stock/best.pt --parent-sha256 YOUR_VERIFIED_PARENT_SHA256 --gpus 0 1
+```
+
+Replace the hash with the verified parent checkpoint's SHA256. The suite compares
+the original time-limit bootstrap, a terminal deadline with zero timeout reward,
+and a terminal deadline with a -30 failure reward. All retain the existing time
+cost. Every arm copies the same actor into a fresh, identically seeded critic;
+validation and comparison craft seeds are separate from training seeds. Defaults
+run 100 PPO updates for each of nine jobs, with one child per GPU. Parent/source
+hashes are checked before each launch. A failed child stops the queue; SIGTERM
+allows checkpointing before bounded termination. Use a new empty output root.
+`--plan-only` writes the commands without starting training.
+
+Finite deadlines use explicit v5 objective contracts. Original v3/v4 defaults
+remain unchanged. `--actor-from` is an intentional actor-only initialization,
+whereas `--warm-start` requires a matching complete contract. PPO diagnostics
+include separate actor/critic gradient norms, value explained variance, TD
+errors, action saturation and cumulative optimizer steps. The suite's paired
+comparison report is research evidence, not release qualification or permission
+to install experimental weights.
+
+The independent shooting teacher searches bounded ascent, coast and
+circularization feedback parameters using the complete remaining stage stack:
+
+```sh
+.venv/bin/python -m orbiter.ascent_planner --help
+```
+
+Its benchmark compares the planner and existing heuristic on the same frozen
+craft. Successful witnesses are replayed in the scalar simulator and coasted
+unpowered for a full orbital period. A failed search leaves reachability unknown.
+The planner is experimental and does not control the game.
+
+This is an ascent curriculum for screened sequential liquid rockets, with
 fresh craft, drag, actuator and captured-craft stress tests. Four-stage tests
 are stage-count extrapolation for v3 and fresh-craft tests for v4. The captured
 Transfer stress retains measured aerodynamic coefficients and atmosphere in
