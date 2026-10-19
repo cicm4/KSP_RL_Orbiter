@@ -160,6 +160,13 @@ def test_runtime_ancestry_audit_rejects_unmatched_initial_critic(tmp_path):
                           initialization=dict(critic="fresh_seeded", critic_seed=1, critic_sha256="same"),
                           value_warm_start=dict(initial_observation_sha256="initial", final_observation_sha256="final")),
         )
+        # A selected initialization checkpoint predates critic warmup. Its
+        # ancestry intentionally omits that later work; run events still prove
+        # that all arms collected the same frozen-actor trajectories.
+        warm = metadata["ancestry"]["value_warm_start"]
+        (rd / "events.jsonl").write_text(json.dumps(dict(event="value_warm_start", **warm)) + "\n")
+        if arm == "truncate":
+            metadata["ancestry"].pop("value_warm_start")
         suite.write_json(rd / "best.metadata.json", metadata)
         manifest["jobs"].append(dict(name=arm, run_dir=str(rd), seed=1, arm=arm, status="complete"))
     assert len(suite.summarize(manifest)["best_sha256"]) == 3

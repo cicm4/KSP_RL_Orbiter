@@ -121,6 +121,7 @@ def test_scalar_qualification_rejects_changed_actions_and_real_pressure_limit(so
     assert not failed["qualified"] and not failed["scalar_success"]
     pressure = qualify_witness(config, row["actions"], max_dynamic_pressure=1)
     assert pressure["scalar_success"]
+    assert isinstance(pressure["pressure_constraint_satisfied"], bool)
     assert not pressure["qualified"] and not pressure["pressure_constraint_satisfied"]
     assert pressure["coast"] is None
 

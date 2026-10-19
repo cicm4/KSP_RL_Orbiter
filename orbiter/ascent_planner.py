@@ -197,8 +197,12 @@ def _rollout(configs, parameters, heuristic, *, device, budget, record_actions=F
         if bool(heuristic.any()):
             action = torch.where(heuristic[:, None], env.teacher(), action)
         if actions is not None:
-            for index in torch.nonzero(~done).flatten().cpu().tolist():
-                actions[index].append(action[index].cpu().tolist())
+            # One device transfer for the full action batch, rather than one
+            # CUDA synchronization per live world per control interval.
+            action_rows = action.cpu().tolist()
+            live_indices = torch.nonzero(~done).flatten().cpu().tolist()
+            for index in live_indices:
+                actions[index].append(action_rows[index])
         max_q = torch.maximum(max_q, torch.where(done, 0, env.telemetry()["dynamic_pressure"]))
         _, _, terminated, truncated, info = env.step(action)
         max_q = torch.maximum(max_q, torch.where(done, 0, env.telemetry()["dynamic_pressure"]))
@@ -289,7 +293,7 @@ def qualify_witness(config, actions, *, expected=None, max_dynamic_pressure=None
         if terminated or truncated:
             break
     orbital_success = bool(info["success"])
-    pressure_ok = max_dynamic_pressure is None or env.max_q <= max_dynamic_pressure
+    pressure_ok = bool(max_dynamic_pressure is None or env.max_q <= max_dynamic_pressure)
     coast = _coast_scalar(env) if orbital_success and pressure_ok else None
     state = [env.x, env.y, env.vx, env.vy]
     return dict(

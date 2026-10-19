@@ -140,9 +140,15 @@ def summarize(manifest):
             init = ancestry["initialization"]
             if init["critic"] != "fresh_seeded" or init["critic_seed"] != job["seed"]:
                 raise ValueError("checkpoint did not use the matched fresh critic")
-            warm = ancestry.get("value_warm_start", {})
-            identity = (init["critic_sha256"], warm.get("initial_observation_sha256"),
-                        warm.get("final_observation_sha256"))
+            # A best checkpoint can legitimately remain the pre-warmup actor.
+            # Audit work performed by the run from its events, without adding
+            # later training history to that earlier checkpoint's ancestry.
+            events = [json.loads(line) for line in (rd / "events.jsonl").read_text().splitlines() if line.strip()]
+            warm = next((event for event in events if event.get("event") == "value_warm_start"), None)
+            if warm is None:
+                raise ValueError("missing frozen-actor critic warmup evidence")
+            identity = (init["critic_sha256"], warm["initial_observation_sha256"],
+                        warm["final_observation_sha256"])
             if job["seed"] in initializations and initializations[job["seed"]] != identity:
                 raise ValueError("same-seed arms have different initial critics or warmup craft")
             initializations[job["seed"]] = identity
