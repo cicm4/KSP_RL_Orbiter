@@ -258,6 +258,26 @@ craft. Successful witnesses are replayed in the scalar simulator and coasted
 unpowered for a full orbital period. A failed search leaves reachability unknown.
 The planner is experimental and does not control the game.
 
+To compare feedforward and recurrent residual students, generate disjoint teacher
+banks and run the separate imitation experiment:
+
+```sh
+.venv/bin/python -m orbiter.ascent_planner --count 64 --seed 920 --population 16 --iterations 3 --max-dynamic-pressure 60000 --output runs/teacher-train.json
+.venv/bin/python -m orbiter.ascent_planner --count 16 --seed 921 --population 16 --iterations 3 --max-dynamic-pressure 60000 --output runs/teacher-validation.json
+.venv/bin/python -m orbiter.distill_ascent --train-report runs/teacher-train.json --validation-report runs/teacher-validation.json --run-dir runs/student-comparison --epochs 40
+```
+
+Only freshly scalar-qualified teacher trajectories become labels. Physical craft
+identities must differ between banks. Both students augment the same fixed
+stage-aware feedback controller, without optimized per-craft parameters at
+inference. The GRU trains on ordered sequences and resets its state per craft.
+Validation action error selects the epoch; closed-loop validation includes every
+validation craft and requires scalar replay, pressure compliance and a full
+unpowered orbit. Lower imitation error alone does not establish flight
+reliability. Previous actions are teacher-forced during training, so exposure
+bias remains; final unseen tests and actual KSP flights are still required.
+These checkpoints have a separate experimental contract and no live adapter.
+
 This is an ascent curriculum for screened sequential liquid rockets, with
 fresh craft, drag, actuator and captured-craft stress tests. Four-stage tests
 are stage-count extrapolation for v3 and fresh-craft tests for v4. The captured
