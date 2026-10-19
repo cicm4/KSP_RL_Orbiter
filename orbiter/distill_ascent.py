@@ -384,7 +384,7 @@ def sequence_batch(trajectories, *, device):
     return batch
 
 
-def _sequence_pass(model, trajectories, *, batch_size, bptt_steps, optimizer=None, generator=None):
+def _sequence_pass(model, trajectories, *, batch_size, bptt_steps, optimizer=None, generator=None, stop_requested=None):
     device = next(model.parameters()).device
     order = torch.randperm(len(trajectories), generator=generator).tolist() if optimizer is not None else list(range(len(trajectories)))
     squared_error, action_count = 0.0, 0
@@ -413,6 +413,8 @@ def _sequence_pass(model, trajectories, *, batch_size, bptt_steps, optimizer=Non
                 hidden = hidden.detach()  # Preserve order/state; truncate gradients only.
             squared_error += float(error.detach().sum())
             action_count += error.numel()
+            if stop_requested is not None and stop_requested():
+                return squared_error / action_count
     return squared_error / action_count
 
 
@@ -434,7 +436,7 @@ def train_student(model, train, validation, *, epochs, batch_size, learning_rate
 
 
 @torch.no_grad()
-def evaluate_controller(model, bank, *, device="cpu"):
+def evaluate_controller(model, bank, *, device="cpu", stop_requested=None):
     """Closed-loop student actions, followed by independent scalar/coast proof."""
     configs = bank.configs
     env = BatchedAeroAscent(len(configs), device=device, seed=0)
@@ -447,6 +449,8 @@ def evaluate_controller(model, bank, *, device="cpu"):
     if model is not None:
         model.eval()
     for _ in range(math.ceil(env.max_time / env.control_dt) + 1):
+        if stop_requested is not None and stop_requested():
+            raise InterruptedError("student evaluation interrupted")
         baseline = guidance_action(env, parameters)
         if model is None:
             action = baseline
@@ -464,6 +468,8 @@ def evaluate_controller(model, bank, *, device="cpu"):
         raise RuntimeError("student evaluation did not finish its finite mission")
     rows = []
     for config, commands, teacher_qualified in zip(configs, actions, bank.reported_qualified):
+        if stop_requested is not None and stop_requested():
+            raise InterruptedError("student qualification interrupted")
         qualification = qualify_witness(
             config, commands, max_dynamic_pressure=bank.max_dynamic_pressure
         )

@@ -39,6 +39,116 @@ _STOP_CHECKPOINT = None
 _PHASE_PROGRESS = {}
 DEADLINE_TASK = "vehicle_conditioned_ascent_deadline_v5"
 AERO_DEADLINE_TASK = "vehicle_conditioned_aero_ascent_deadline_v5"
+PPO_VARIANT_TASK = "vehicle_conditioned_ascent_ppo_v6"
+AERO_PPO_VARIANT_TASK = "vehicle_conditioned_aero_ascent_ppo_v6"
+
+
+def ppo_optimizer_configuration(
+    *, optimizer="joint", learning_rate=1e-5, actor_learning_rate=None,
+    critic_learning_rate=None, actor_max_grad_norm=None,
+    critic_max_grad_norm=None, entropy_coefficient=0.0, critic_extra_updates=0,
+):
+    """Canonical opt-in training contract; default tasks retain their old bytes."""
+    if optimizer not in ("joint", "separate"):
+        raise ValueError("PPO optimizer must be joint or separate")
+    for name, value in (
+        ("learning rate", learning_rate),
+        ("actor learning rate", actor_learning_rate),
+        ("critic learning rate", critic_learning_rate),
+        ("actor gradient norm", actor_max_grad_norm),
+        ("critic gradient norm", critic_max_grad_norm),
+    ):
+        if value is not None and (not math.isfinite(value) or value <= 0):
+            raise ValueError(f"{name} must be positive and finite")
+    if not math.isfinite(entropy_coefficient) or entropy_coefficient < 0:
+        raise ValueError("entropy coefficient must be finite and nonnegative")
+    if type(critic_extra_updates) is not int or critic_extra_updates < 0:
+        raise ValueError("extra critic updates must be a nonnegative integer")
+    if optimizer == "joint" and any(value is not None for value in (
+        actor_learning_rate, critic_learning_rate,
+        actor_max_grad_norm, critic_max_grad_norm,
+    )):
+        raise ValueError("actor/critic rates and norm limits require separate PPO optimizers")
+    if optimizer == "joint" and critic_extra_updates:
+        raise ValueError("extra critic updates require separate PPO optimizers")
+    return dict(
+        version=1,
+        optimizer=optimizer,
+        actor_learning_rate=float(actor_learning_rate or learning_rate),
+        critic_learning_rate=float(critic_learning_rate or learning_rate),
+        gradient_clipping=(
+            dict(mode="joint", max_norm=0.5)
+            if optimizer == "joint" else dict(
+                mode="separate", actor_max_norm=float(actor_max_grad_norm or 0.5),
+                critic_max_norm=float(critic_max_grad_norm or 0.5),
+            )
+        ),
+        entropy_coefficient=float(entropy_coefficient),
+        entropy_estimator="tanh_normal_reparameterized_monte_carlo",
+        critic_extra_updates=critic_extra_updates,
+    )
+
+
+def _validate_ppo_variant(variant):
+    try:
+        clipping = variant["gradient_clipping"]
+        kwargs = dict(
+            optimizer=variant["optimizer"],
+            learning_rate=variant["actor_learning_rate"],
+            entropy_coefficient=variant["entropy_coefficient"],
+            critic_extra_updates=variant["critic_extra_updates"],
+        )
+        if variant["optimizer"] == "separate":
+            kwargs.update(
+                actor_learning_rate=variant["actor_learning_rate"],
+                critic_learning_rate=variant["critic_learning_rate"],
+                actor_max_grad_norm=clipping["actor_max_norm"],
+                critic_max_grad_norm=clipping["critic_max_norm"],
+            )
+        expected = ppo_optimizer_configuration(**kwargs)
+        if variant != expected:
+            raise ValueError("PPO variant contract differs")
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("invalid PPO variant contract") from error
+    return expected
+
+
+def squashed_normal_entropy(distribution):
+    """One reparameterized entropy sample, including the tanh Jacobian.
+
+    Latent Normal entropy alone can reward actions already saturated by tanh.
+    This opt-in estimate consumes RNG; the legacy zero-entropy path does not.
+    """
+    latent = distribution.rsample()
+    log_jacobian = 2 * (math.log(2) - latent - nn.functional.softplus(-2 * latent))
+    return -(distribution.log_prob(latent) - log_jacobian).sum(-1).mean()
+
+
+def clip_ppo_gradients(
+    actor_parameters, critic_parameters, *, optimizer="joint",
+    actor_max_grad_norm=0.5, critic_max_grad_norm=0.5, joint_parameters=None,
+):
+    """Return pre-clip norms; log_std belongs to the actor parameter list."""
+    def norm(parameters):
+        return torch.linalg.vector_norm(torch.stack([
+            torch.linalg.vector_norm(parameter.grad.detach())
+            for parameter in parameters if parameter.grad is not None
+        ]))
+
+    actor_norm, critic_norm = norm(actor_parameters), norm(critic_parameters)
+    if optimizer == "joint":
+        # Preserve the model's historical parameter ordering in the default path.
+        parameters = joint_parameters if joint_parameters is not None else [
+            *actor_parameters, *critic_parameters
+        ]
+        total_norm = nn.utils.clip_grad_norm_(parameters, 0.5)
+    elif optimizer == "separate":
+        total_norm = torch.linalg.vector_norm(torch.stack([actor_norm, critic_norm]))
+        nn.utils.clip_grad_norm_(actor_parameters, actor_max_grad_norm)
+        nn.utils.clip_grad_norm_(critic_parameters, critic_max_grad_norm)
+    else:
+        raise ValueError("PPO optimizer must be joint or separate")
+    return total_norm, actor_norm, critic_norm
 
 
 def _request_stop(signum, _frame):
@@ -145,6 +255,8 @@ def load_policy(path, *, device="cpu"):
     supported.add((AERO_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA))
     supported.add((DEADLINE_TASK, OBSERVATIONS, FEATURE_SCHEMA))
     supported.add((AERO_DEADLINE_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA))
+    supported.add((PPO_VARIANT_TASK, OBSERVATIONS, FEATURE_SCHEMA))
+    supported.add((AERO_PPO_VARIANT_TASK, AERO_OBSERVATIONS, AERO_FEATURE_SCHEMA))
     if (
         record.get("task"),
         contract.get("observations"),
@@ -153,20 +265,39 @@ def load_policy(path, *, device="cpu"):
         raise ValueError("not a vehicle-conditioned ascent checkpoint")
     if contract.get("task", record["task"]) != record["task"]:
         raise ValueError("checkpoint task and contract disagree")
-    if record["task"] in (DEADLINE_TASK, AERO_DEADLINE_TASK):
-        physics = "aero" if record["task"] == AERO_DEADLINE_TASK else "constant-cda"
+    variant_task = record["task"] in (PPO_VARIANT_TASK, AERO_PPO_VARIANT_TASK)
+    if record["task"] in (DEADLINE_TASK, AERO_DEADLINE_TASK) or variant_task:
+        physics = "aero" if record["task"] in (
+            AERO_DEADLINE_TASK, AERO_PPO_VARIANT_TASK
+        ) else "constant-cda"
         objective = contract.get("objective", {})
         try:
+            if not isinstance(objective, dict):
+                raise ValueError("objective contract must be a mapping")
+            variant = (
+                _validate_ppo_variant(contract["ppo_variant"]) if variant_task else None
+            )
             _, _, expected = experiment_contract(
                 contract["curriculum"],
                 physics,
-                deadline_mode=objective["deadline_mode"],
-                timeout_penalty=objective["timeout_penalty"],
+                deadline_mode=(
+                    objective.get("deadline_mode", "truncate")
+                    if variant_task else objective["deadline_mode"]
+                ),
+                timeout_penalty=(
+                    objective.get("timeout_penalty", 0.0)
+                    if variant_task else objective["timeout_penalty"]
+                ),
+                ppo_variant=variant,
             )
         except (KeyError, TypeError, ValueError) as error:
-            raise ValueError("invalid finite-horizon objective contract") from error
+            label = "PPO variant" if variant_task else "finite-horizon objective"
+            raise ValueError(f"invalid {label} contract") from error
         if contract != expected:
-            raise ValueError("finite-horizon task/environment contract differs")
+            label = "PPO variant" if variant_task else "finite-horizon"
+            raise ValueError(f"{label} task/environment contract differs")
+    elif "ppo_variant" in contract:
+        raise ValueError("PPO variant requires its distinct task identifier")
     model = VehiclePolicy(record["hidden"], observations=contract["observations"]).to(
         device
     )
@@ -197,12 +328,18 @@ def transfer_aero_policy(path, *, device="cpu"):
     return target, record
 
 
-def initialize_actor_policy(path, contract, *, seed, device="cpu"):
+def initialize_actor_policy(
+    path, contract, *, seed, device="cpu", initial_action_std=None
+):
     """Explicit actor-only initialization across objectives, with a fresh critic.
 
     Every ablation arm starts from the same parent actor and the same seeded
     critic. Neither the parent's critic nor optimizer state crosses this boundary.
     """
+    if initial_action_std is not None and (
+        not math.isfinite(initial_action_std) or initial_action_std <= 0
+    ):
+        raise ValueError("initial action std must be positive and finite")
     source, record = load_policy(path, device=device)
     from .generalized_aero_env import TASK as AERO_TASK
 
@@ -229,6 +366,13 @@ def initialize_actor_policy(path, contract, *, seed, device="cpu"):
         elif key.startswith("actor.") or key == "log_std":
             state[key].copy_(value)
     target.load_state_dict(state)
+    if initial_action_std is not None:
+        with torch.no_grad():
+            target.log_std.fill_(math.log(initial_action_std))
+            realized_std = target.log_std.exp()
+            variance = realized_std.square()
+            if not bool((torch.isfinite(variance) & (variance > 0)).all()):
+                raise ValueError("initial action std is not representable in policy dtype")
     return target, record
 
 
@@ -512,25 +656,37 @@ def ppo_train(
     selected_callback,
     target_kl=None,
     validation_interval=5,
+    ppo_optimizer="joint",
+    actor_learning_rate=None,
+    critic_learning_rate=None,
+    actor_max_grad_norm=None,
+    critic_max_grad_norm=None,
+    entropy_coefficient=0.0,
+    critic_extra_updates=0,
 ):
     """On-device PPO with proper terminal and time-limit bootstrap separation."""
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    configuration = ppo_optimizer_configuration(
+        optimizer=ppo_optimizer, learning_rate=learning_rate,
+        actor_learning_rate=actor_learning_rate,
+        critic_learning_rate=critic_learning_rate,
+        actor_max_grad_norm=actor_max_grad_norm,
+        critic_max_grad_norm=critic_max_grad_norm,
+        entropy_coefficient=entropy_coefficient,
+        critic_extra_updates=critic_extra_updates,
+    )
     actor_parameters = [*model.actor.parameters(), model.log_std]
     critic_parameters = list(model.critic.parameters())
-
-    def gradient_norm(parameters):
-        return torch.linalg.vector_norm(
-            torch.stack(
-                [
-                    torch.linalg.vector_norm(parameter.grad.detach())
-                    for parameter in parameters
-                    if parameter.grad is not None
-                ]
-            )
-        )
+    optimizers = (
+        [torch.optim.Adam(model.parameters(), lr=learning_rate)]
+        if ppo_optimizer == "joint" else [
+            torch.optim.Adam(actor_parameters, lr=configuration["actor_learning_rate"]),
+            torch.optim.Adam(critic_parameters, lr=configuration["critic_learning_rate"]),
+        ]
+    )
     observation = env.observation()
     transitions = 0
     optimizer_steps = 0
+    critic_optimizer_steps = 0
     for update in range(updates):
         _PHASE_PROGRESS.update(
             phase="ppo", completed_updates=update, ppo_transitions=transitions
@@ -604,6 +760,7 @@ def ppo_train(
         total_grad_norm = torch.zeros_like(total_loss)
         total_actor_grad_norm = torch.zeros_like(total_loss)
         total_critic_grad_norm = torch.zeros_like(total_loss)
+        total_entropy = torch.zeros_like(total_loss)
         checked_batches = 0
         loss_count = 0
         early_stopped = False
@@ -642,20 +799,36 @@ def ppo_train(
                 value = model.critic(flat["obs"][selected]).squeeze(-1)
                 value_loss = nn.functional.mse_loss(value, returns[selected])
                 loss = actor_loss + 0.5 * value_loss
-                optimizer.zero_grad(set_to_none=True)
+                entropy = None
+                if entropy_coefficient:
+                    entropy = squashed_normal_entropy(distribution)
+                    loss = loss - entropy_coefficient * entropy
+                for optimizer in optimizers:
+                    optimizer.zero_grad(set_to_none=True)
                 loss.backward()
-                actor_grad_norm = gradient_norm(actor_parameters)
-                critic_grad_norm = gradient_norm(critic_parameters)
-                grad_norm = nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-                optimizer.step()
+                grad_norm, actor_grad_norm, critic_grad_norm = clip_ppo_gradients(
+                    actor_parameters, critic_parameters, optimizer=ppo_optimizer,
+                    actor_max_grad_norm=configuration["gradient_clipping"].get(
+                        "actor_max_norm", 0.5
+                    ),
+                    critic_max_grad_norm=configuration["gradient_clipping"].get(
+                        "critic_max_norm", 0.5
+                    ),
+                    joint_parameters=model.parameters(),
+                )
+                for optimizer in optimizers:
+                    optimizer.step()
                 total_loss += loss.detach()
                 total_actor_loss += actor_loss.detach()
                 total_critic_loss += value_loss.detach()
                 total_grad_norm += grad_norm.detach()
                 total_actor_grad_norm += actor_grad_norm
                 total_critic_grad_norm += critic_grad_norm
+                if entropy is not None:
+                    total_entropy += entropy.detach()
                 loss_count += 1
                 optimizer_steps += 1
+                critic_optimizer_steps += 1
             if not math.isfinite(float(maximum_kl)):
                 raise FloatingPointError(
                     "PPO update produced a nonfinite KL divergence"
@@ -666,12 +839,33 @@ def ppo_train(
             raise FloatingPointError(
                 "PPO rejected the unchanged rollout policy before its first step"
             )
+        extra_critic_loss = torch.zeros((), device=env.device)
+        extra_critic_grad_norm = torch.zeros_like(extra_critic_loss)
+        for _ in range(critic_extra_updates):
+            # Fixed, separately budgeted fits on the frozen rollout targets.
+            # The actor KL budget cannot stop these critic-only updates.
+            selected = torch.randint(
+                len(returns), (min(batch_size, len(returns)),), device=env.device
+            )
+            value = model.critic(flat["obs"][selected]).squeeze(-1)
+            value_loss = nn.functional.mse_loss(value, returns[selected])
+            optimizers[1].zero_grad(set_to_none=True)
+            (0.5 * value_loss).backward()
+            critic_norm = nn.utils.clip_grad_norm_(
+                critic_parameters,
+                configuration["gradient_clipping"]["critic_max_norm"],
+            )
+            optimizers[1].step()
+            extra_critic_loss += value_loss.detach()
+            extra_critic_grad_norm += critic_norm.detach()
+            critic_optimizer_steps += 1
         transitions += horizon * env.count
         _PHASE_PROGRESS.update(
             phase="ppo",
             completed_updates=update + 1,
             ppo_transitions=transitions,
             cumulative_optimizer_steps=optimizer_steps,
+            cumulative_critic_optimizer_steps=critic_optimizer_steps,
         )
         _check_stop()
         log(
@@ -691,6 +885,17 @@ def ppo_train(
             mean_absolute_td_error=float(td_error.abs().mean()),
             action_tanh_saturation_fraction=float(action_saturation),
             cumulative_optimizer_steps=optimizer_steps,
+            cumulative_actor_optimizer_steps=optimizer_steps,
+            cumulative_critic_optimizer_steps=critic_optimizer_steps,
+            critic_extra_updates=critic_extra_updates,
+            extra_critic_loss=(
+                float(extra_critic_loss / critic_extra_updates)
+                if critic_extra_updates else None
+            ),
+            extra_critic_gradient_norm_before_clip=(
+                float(extra_critic_grad_norm / critic_extra_updates)
+                if critic_extra_updates else None
+            ),
             approximate_kl=float(total_kl / checked_batches),
             maximum_minibatch_kl=float(maximum_kl),
             clip_fraction=float(total_clipped / checked_batches),
@@ -700,6 +905,11 @@ def ppo_train(
             kl_early_stop=early_stopped,
             kl_check="before_minibatch_optimizer_step",
             action_std=model.log_std.detach().exp().cpu().tolist(),
+            ppo_optimizer=ppo_optimizer,
+            entropy_coefficient=entropy_coefficient,
+            mean_squashed_entropy=(
+                float(total_entropy / loss_count) if entropy_coefficient else None
+            ),
             elapsed_s=time.monotonic() - start,
         )
         if (update + 1) % validation_interval == 0 or update + 1 == updates:
@@ -851,7 +1061,8 @@ def evaluate_captured_transfer(
 
 
 def experiment_contract(
-    curriculum, physics="constant-cda", *, deadline_mode="truncate", timeout_penalty=0.0
+    curriculum, physics="constant-cda", *, deadline_mode="truncate", timeout_penalty=0.0,
+    ppo_variant=None,
 ):
     """Preserve v3/v4 defaults; finite mission deadlines have a distinct v5 task."""
     if deadline_mode not in ("truncate", "terminal"):
@@ -945,6 +1156,11 @@ def experiment_contract(
                 shaping="gamma_phi_next_minus_phi_with_zero_terminal_potential",
             ),
         )
+    if ppo_variant is not None:
+        contract.update(
+            task=AERO_PPO_VARIANT_TASK if physics == "aero" else PPO_VARIANT_TASK,
+            ppo_variant=_validate_ppo_variant(ppo_variant),
+        )
     return envelope, four_stage, contract
 
 
@@ -999,6 +1215,17 @@ def main(argv=None):
     parser.add_argument("--target-kl", type=float, default=0.02)
     parser.add_argument("--validation-interval", type=int, default=5)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
+    parser.add_argument("--ppo-optimizer", choices=("joint", "separate"), default="joint")
+    parser.add_argument("--actor-learning-rate", type=float)
+    parser.add_argument("--critic-learning-rate", type=float)
+    parser.add_argument("--actor-max-grad-norm", type=float)
+    parser.add_argument("--critic-max-grad-norm", type=float)
+    parser.add_argument("--entropy-coefficient", type=float, default=0.0)
+    parser.add_argument("--critic-extra-updates", type=int, default=0)
+    parser.add_argument(
+        "--initial-action-std", type=float,
+        help="Explicitly reset latent Normal std after actor-only initialization",
+    )
     parser.add_argument(
         "--physics", choices=("constant-cda", "aero"), default="constant-cda"
     )
@@ -1026,6 +1253,23 @@ def main(argv=None):
         parser.error("target KL must be positive and finite")
     if not math.isfinite(args.learning_rate) or args.learning_rate <= 0:
         parser.error("learning rate must be positive and finite")
+    try:
+        ppo_configuration = ppo_optimizer_configuration(
+            optimizer=args.ppo_optimizer, learning_rate=args.learning_rate,
+            actor_learning_rate=args.actor_learning_rate,
+            critic_learning_rate=args.critic_learning_rate,
+            actor_max_grad_norm=args.actor_max_grad_norm,
+            critic_max_grad_norm=args.critic_max_grad_norm,
+            entropy_coefficient=args.entropy_coefficient,
+            critic_extra_updates=args.critic_extra_updates,
+        )
+    except (TypeError, ValueError) as error:
+        parser.error(str(error))
+    if args.initial_action_std is not None:
+        if not math.isfinite(args.initial_action_std) or args.initial_action_std <= 0:
+            parser.error("initial action std must be positive and finite")
+        if not args.actor_from:
+            parser.error("initial action std reset requires --actor-from")
     if (
         sum(
             bool(item)
@@ -1046,12 +1290,21 @@ def main(argv=None):
         parser.error("PPO-only training requires initialized checkpoint weights")
     if args.ppo_only and not args.ppo_updates:
         parser.error("PPO-only training requires positive PPO updates")
+    if (
+        (args.ppo_optimizer != "joint" or args.entropy_coefficient != 0)
+        and not (args.actor_from or args.warm_start or args.evaluate)
+    ):
+        parser.error("a new PPO variant requires --actor-from with a fresh critic")
     try:
         envelope, holdout, contract = experiment_contract(
             args.curriculum,
             args.physics,
             deadline_mode=args.deadline_mode,
             timeout_penalty=args.timeout_penalty,
+            ppo_variant=(
+                ppo_configuration
+                if args.ppo_optimizer != "joint" or args.entropy_coefficient != 0 else None
+            ),
         )
     except ValueError as error:
         parser.error(str(error))
@@ -1089,7 +1342,8 @@ def main(argv=None):
     elif args.actor_from:
         try:
             initial_model, initial_record = initialize_actor_policy(
-                args.actor_from, contract, seed=args.seed, device=args.device
+                args.actor_from, contract, seed=args.seed, device=args.device,
+                initial_action_std=args.initial_action_std,
             )
         except ValueError as error:
             parser.error(str(error))
@@ -1154,6 +1408,8 @@ def main(argv=None):
             horizon=args.horizon,
         ),
     )
+    if "ppo_variant" in contract or args.initial_action_std is not None:
+        ancestry["ppo_optimization"]["variant"] = ppo_configuration
 
     def save_interrupted():
         progress = dict(_PHASE_PROGRESS)
@@ -1211,7 +1467,7 @@ def main(argv=None):
         if args.actor_from:
             ancestry["initialization"] = dict(
                 actor_copied=True,
-                log_std_copied=True,
+                log_std_copied=args.initial_action_std is None,
                 critic="fresh_seeded",
                 critic_seed=args.seed,
                 critic_sha256=hashlib.sha256(
@@ -1224,6 +1480,14 @@ def main(argv=None):
                 ppo_sampling_seed=args.seed + 7000000,
                 optimizer_state_restored=False,
             )
+            if args.initial_action_std is not None:
+                ancestry["initialization"].update(
+                    log_std_reset=True,
+                    initial_action_std=args.initial_action_std,
+                    parent_action_std=(
+                        initial_record["state_dict"]["log_std"].exp().cpu().tolist()
+                    ),
+                )
     if args.evaluate:
         ancestry = initial_record["ancestry"]
     else:
@@ -1243,6 +1507,11 @@ def main(argv=None):
             ancestry["ppo_optimizer_steps"] = (
                 _PHASE_PROGRESS.get("cumulative_optimizer_steps", 0) if ppo_steps else 0
             )
+            if "ppo_variant" in contract:
+                ancestry["ppo_critic_optimizer_steps"] = (
+                    _PHASE_PROGRESS.get("cumulative_critic_optimizer_steps", 0)
+                    if ppo_steps else 0
+                )
             result = evaluate(
                 model,
                 count=args.eval_worlds,
@@ -1350,6 +1619,13 @@ def main(argv=None):
                 selected_callback=lambda steps: select(f"ppo_{steps}", steps),
                 target_kl=args.target_kl,
                 validation_interval=args.validation_interval,
+                ppo_optimizer=args.ppo_optimizer,
+                actor_learning_rate=args.actor_learning_rate,
+                critic_learning_rate=args.critic_learning_rate,
+                actor_max_grad_norm=args.actor_max_grad_norm,
+                critic_max_grad_norm=args.critic_max_grad_norm,
+                entropy_coefficient=args.entropy_coefficient,
+                critic_extra_updates=args.critic_extra_updates,
             )
         model, record = load_policy(args.run_dir / "best.pt", device=args.device)
         ancestry = record["ancestry"]

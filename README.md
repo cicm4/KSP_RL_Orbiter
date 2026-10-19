@@ -278,6 +278,37 @@ reliability. Previous actions are teacher-forced during training, so exposure
 bias remains; final unseen tests and actual KSP flights are still required.
 These checkpoints have a separate experimental contract and no live adapter.
 
+For current-state teacher imitation, `orbiter.train_dagger_student` compares
+feedforward or recurrent residual students with recent on-policy data or bounded
+DAgger aggregation. It queries each craft's feedback teacher at visited states,
+records the actions actually executed, and retains the initial controller as a
+validation candidate. `--test-report` adds a physically disjoint final comparison
+bank that never selects weights. Initial teacher launch qualification does not
+prove recovery from student errors. This experiment follows the distribution
+shift motivation of [DAgger](https://proceedings.mlr.press/v15/ross11a.html) and
+the student-rollout procedure in [RAPTOR](https://arxiv.org/html/2509.11481v2).
+
+PPO also has opt-in `--ppo-optimizer separate`, actor/critic learning rates and
+gradient limits, `--critic-extra-updates`, and `--entropy-coefficient`. These
+variants use strict v6 training contracts. `--initial-action-std` explicitly resets
+exploration only with a fresh actor-only parent and records the reset in ancestry.
+Defaults retain the historical optimizer and objective behavior.
+
+`orbiter.overnight_suite` executes a frozen JSON plan containing explicit command
+arrays, input/source hashes, per-job time limits and output paths. It runs one
+child per physical GPU, preserves verified checkpoints, and stops before the
+specified UTC deadline with bounded graceful termination. A finite reserve queue
+can fill unused time; jobs still pending at the cutoff are skipped. Validate a
+plan without creating its output directory:
+
+```sh
+.venv/bin/python -m orbiter.overnight_suite --plan runs/overnight-plan.json --run-root runs/overnight --stop-at 2026-10-19T11:00:00Z --gpus 0 1 --plan-only
+```
+
+Remove `--plan-only` to execute that reviewed plan. Three consecutive failed jobs
+stop the queue; source/input drift stops it immediately. Training and method
+selection remain simulator research and never install checkpoints into KSP.
+
 This is an ascent curriculum for screened sequential liquid rockets, with
 fresh craft, drag, actuator and captured-craft stress tests. Four-stage tests
 are stage-count extrapolation for v3 and fresh-craft tests for v4. The captured
