@@ -188,30 +188,48 @@ restores policy/optimizer state, not a bit-for-bit simulation/RNG continuation.
 
 ### Experimental spacecraft generalization
 
-`orbiter.train_generalized` trains a separate 54-input policy conditioned on
+`orbiter.train_generalized` trains a separate policy conditioned on
 ordered stage masses, thrust, Isp, available delta-v, burn duration, drag and
 attitude response. Float64 RK4 physics, observations, demonstrations and PPO
-updates stay on the selected GPU. Two independent jobs can use both GPUs:
+updates stay on the selected GPU. The original v3 experiment has 54 inputs and
+constant drag; `--physics aero` selects v4 with 56 inputs, angle-dependent drag
+and signed lift. V4 trains all supported two-, three- and four-stage layouts.
+Two jobs can use both GPUs:
 
 ```sh
 .venv/bin/python -m orbiter.train_generalized --run-dir runs/generalized-stock --device cuda:0 --curriculum stock --seed 404 --worlds 8192 --label-steps 800 --bc-updates 10000 --dagger-rounds 10 --ppo-updates 500 --batch-size 16384 --eval-worlds 512
 .venv/bin/python -m orbiter.train_generalized --run-dir runs/generalized-efficient --device cuda:1 --curriculum efficient --seed 303 --worlds 8192 --label-steps 800 --bc-updates 10000 --dagger-rounds 10 --ppo-updates 500 --batch-size 16384 --eval-worlds 512
 ```
 
-Run these in separate terminals or process sessions. Collection measured about
-340,000 simulator control transitions per second on each RTX 4090 at this batch
-size. Checkpoints are saved during training and on SIGINT/SIGTERM. `--resume`
-loads a matching policy with fresh optimizers and simulator worlds; it is a
-warm restart. Evaluation rejects a mismatched curriculum. The v3 task/schema
-records logarithmic actuator normalization and rejects older experimental
-contracts.
+Run these in separate terminals or process sessions. The v3 constant-drag
+collection measured about 340,000 control transitions per second per RTX 4090
+at this batch size. Checkpoints are saved during training and on SIGINT/SIGTERM.
+`--resume` loads matching weights with fresh optimizers and simulator worlds;
+use a new, empty output directory. `--ppo-only` skips imitation when continuing
+initialized weights. Evaluation rejects mismatched physics or curriculum.
+
+To initialize the aero experiment from a stock v3 checkpoint, preserve its
+existing input weights and add two zero-weight aerodynamic inputs:
+
+```sh
+.venv/bin/python -m orbiter.train_generalized --run-dir runs/generalized-aero-stock --device cuda:0 --physics aero --curriculum stock --transfer-from runs/generalized-stock/best.pt --ppo-only --seed 505 --worlds 8192 --label-steps 800 --value-updates 5000 --ppo-updates 500 --batch-size 16384 --eval-worlds 512 --validation-interval 20 --target-kl 0.02
+```
+
+This starts a new task with recorded parent ancestry, not a restored training
+session. PPO records approximate KL, clipping, action standard deviation and
+optimization epochs; the KL limit is checked before each optimizer step and
+can stop the remaining minibatches.
+Validation frequency is configurable so evaluation need not dominate training.
 
 This is an ascent curriculum for feasible sequential liquid rockets, with
-independent craft, four-stage, drag, actuator and captured-craft stress tests.
-It uses planar constant-CdA physics. The captured Transfer stress separately
-retains measured angle-dependent drag and lift, which remain outside the batched
-physics. SRBs, crossfeed, asymmetric thrust and aircraft are unsupported. Capture
-and whole-mission spacecraft generalization remain unqualified.
+fresh craft, drag, actuator and captured-craft stress tests. Four-stage tests
+are stage-count extrapolation for v3 and fresh-craft tests for v4. The captured
+Transfer stress retains measured aerodynamic coefficients and atmosphere in
+the scalar simulator. V4 represents angle-dependent effective areas but omits
+KSP's part-, Mach- and stage-dependent aerodynamics. SRBs, crossfeed, asymmetric
+thrust and aircraft are unsupported. Capture and whole-mission spacecraft
+generalization remain unqualified; experimental checkpoints need actual KSP
+validation before they can replace the released policies.
 
 The earlier pilot selected imitation actors despite completing 52.4 million PPO
 transitions per run: unseen nominal launches passed 203/256
