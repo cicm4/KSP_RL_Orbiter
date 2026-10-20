@@ -242,6 +242,16 @@ def test_v2_trainer_completes_with_warmup_anchor_and_loads_selected_policy(tmp_p
     from orbiter.overnight_suite import validate_report
     validate_report('orbiter.train_architectures', summary)
     model, metadata = load(root/'best.pt')
-    assert model.spec['action_transform'] == 'scaled_tanh' and model.spec['deadzone'] == .2
+    assert model.spec['action_transform'] == 'scaled_tanh' and model.spec['deadzone'] == 0
     assert metadata['contract']['orbital_benchmark_version'] == 2
     assert metadata['contract']['policy_spec']['observations'] == 35
+
+
+def test_deadzone_mean_of_zero_and_small_teacher_labels_executes_no_thrust():
+    # Regression for the d487bba orbital collapse: the MSE optimum between an
+    # in-band zero label and a small corrective label lies inside the deadzone.
+    policy = SequencePolicy('mlp256', 35, 3, 1, action_transform='scaled_tanh',
+                            action_scale=1.05, deadzone=.2)
+    labels = torch.tensor([[0., 0., 0.], [.05, 0., 0.]])
+    mean = policy.squashed_target(labels).mean(0, keepdim=True)
+    assert policy.execute(mean).norm() == 0

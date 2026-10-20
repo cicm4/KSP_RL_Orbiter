@@ -680,9 +680,11 @@ These are bounded-history policies, not unbounded recurrent-state controllers.
 Version 2 of this benchmark (the default) changes the training recipe:
 
 - Actions execute `clamp(1.05 * tanh(z), -1, 1)`, so bounds are reached at finite
-  latent values, and teacher labels are fitted through the inverse mapping. Orbital
-  actions also have a 0.2 norm deadzone, so exploration noise around a coasting
-  mean executes zero thrust.
+  latent values, and teacher labels are fitted through the inverse mapping. An
+  optional `--deadzone` zeroes short orbital action vectors, but it is off by
+  default: the teacher's exact-zero in-band labels and >= deadzone labels just
+  outside the band average into a mean inside the deadzone. A d487bba orbital run
+  validated 29/544 with a 0.2 deadzone and 385/544 with the same weights and none.
 - PPO begins with 16 critic-only rollouts (`--critic-warmup`), and a behavior-cloning
   anchor to the teacher bank decays linearly from `--bc-coef 1` to zero over the
   first half of the updates.

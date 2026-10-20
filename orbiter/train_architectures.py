@@ -476,7 +476,10 @@ def main(argv=None):
     p.add_argument('--orbital-version',type=int,choices=[1,2],default=2)
     p.add_argument('--action-transform',choices=['tanh','scaled_tanh'],default='scaled_tanh')
     p.add_argument('--action-scale',type=float,default=1.05)
-    p.add_argument('--deadzone',type=float,help='orbital default .2; ascent default 0')
+    # A norm deadzone silences coasting noise, but teacher labels jump from
+    # exactly 0 in band to >= deadzone outside it; MSE averages the two into a
+    # mean inside the deadzone, so the deterministic policy never thrusts.
+    p.add_argument('--deadzone',type=float,default=0.)
     p.add_argument('--initial-std',type=float,default=.15)
     p.add_argument('--bc-coef',type=float,default=1.,help='initial teacher-anchor weight during PPO')
     p.add_argument('--bc-decay-updates',type=int,help='anchor decays linearly to zero (default updates/2)')
@@ -490,8 +493,6 @@ def main(argv=None):
               'label_steps','eval_worlds','test_worlds','validation_interval','cpu_threads']
     if any(getattr(args,k)<1 for k in integers) or args.bc_updates<0 or args.critic_extra<0 or args.critic_warmup<0:
         p.error('counts must be positive; BC/extra/warm-up updates may be zero')
-    if args.deadzone is None:
-        args.deadzone=.2 if args.task=='orbital' and args.action_transform!='tanh' else 0.
     if args.bc_decay_updates is None:args.bc_decay_updates=max(1,args.updates//2)
     if args.action_transform=='tanh' and (args.deadzone or args.action_scale!=1.05):
         p.error('the original tanh mapping takes no scale or deadzone')
