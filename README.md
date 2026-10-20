@@ -657,6 +657,49 @@ with its checkpoint. New training output stays in ignored `runs/`; the curated
 models and KSP evidence above are tracked separately. KSP, stock craft files and
 third-party mods are not distributed with this Python package.
 
+## Matched architecture research
+
+`python -m orbiter.train_architectures` compares `mlp256`, `mlp512`, `mlp1024`,
+`gru`, `lstm`, and `transformer` policies with separate actor/value networks.
+GRU/LSTM and the two-layer, four-head, 128-wide Transformer receive a finite
+trailing history (default 16 observations plus executed previous actions).
+History is cleared at every episode boundary and recomputed during PPO updates.
+The Transformer attends only to the available history; dropout is disabled.
+These are bounded-history policies, not unbounded recurrent-state controllers.
+
+Two benchmark contracts are separate. `--task ascent` uses the established
+Kerbin 2–4-stage surrogate and requires `--actor-from` pointing to a frozen
+56-input teacher. `--task orbital` trains one shared policy across **all 17
+stock bodies** from `orbiter/data/stock_system.json`, varying the active liquid
+stage's mass, dry mass, thrust, Isp, and pointing rate. Planet/moon cases start
+already near the destination on incoming hyperbolas. Sun cases start in bound
+heliocentric orbits requiring adjustment; its outer guard is numerical, not a
+fictitious stock SOI. No surface launch is attempted from Sun or Jool.
+
+```sh
+python -m orbiter.train_architectures --task orbital --architecture lstm \
+  --run-dir runs/orbital_lstm --device cuda:0 --seed 901
+```
+
+Use identical seeds, world/horizon/update counts, teacher sample budgets, and
+optimization settings for architecture comparisons. `best.pt` is selected on
+the validation bank; separate comparison seeds never select weights. Final
+orbital reports include per-body failures, independent scalar powered replay,
+and a full unpowered NumPy orbit check for successful policy flights. Ideal
+impulsive budget diagnostics are not feasibility proofs. The 3D benchmark does
+not model aerocapture, heating, terrain or arbitrary propulsion/staging graphs.
+Local capture and ascent scores do **not** establish complete interbody mission
+success or actual KSP operation. Existing game-approved policies are unchanged.
+
+The finite `orbiter.overnight_suite` runner also accepts this module and checks
+that completed orbital reports contain every stock body. Frozen plan/input/code
+hashes, physical CUDA UUID assignment, per-job limits, and the overall UTC stop
+time are checked by the same supervisor used for earlier experiments.
+
+Transformer design references: [GTrXL's RL stability study](https://arxiv.org/abs/1910.06764)
+and [PyTorch's encoder documentation](https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoder.html).
+This finite-window pre-normalized encoder is not an implementation of GTrXL.
+
 ## Research informing this implementation
 
 - [MIT Lincoln Laboratory KSPDG](https://github.com/mit-ll/spacegym-kspdg): robust

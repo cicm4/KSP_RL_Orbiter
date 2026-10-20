@@ -26,6 +26,7 @@ SCHEMA = "overnight_plan_v1"
 MODULES = {
     "orbiter.train_generalized", "orbiter.distill_ascent",
     "orbiter.ascent_planner", "orbiter.train_dagger_student",
+    "orbiter.train_architectures",
 }
 INPUT_FLAGS = {
     "--actor-from", "--warm-start", "--transfer-from", "--train-report",
@@ -36,6 +37,7 @@ DEFAULT_CHECKPOINTS = {
     "orbiter.distill_ascent": ["feedforward.pt", "gru.pt"],
     "orbiter.ascent_planner": [],
     "orbiter.train_dagger_student": ["best.pt", "latest.pt"],
+    "orbiter.train_architectures": ["best.pt", "latest.pt"],
 }
 
 
@@ -283,7 +285,24 @@ def validate_report(module, report):
                 or abs(rate - success / count) > 1e-10):
             raise ValueError("completed evaluation counts disagree")
 
-    if module == "orbiter.train_generalized":
+    if module == "orbiter.train_architectures":
+        episodes(report.get("comparison"))
+        if (report.get("task") != "matched_history_architecture_research_v1"
+                or report.get("interrupted") is not False
+                or report.get("live_ksp_validated") is not False
+                or report.get("final_tests_select_checkpoint") is not False):
+            raise ValueError("architecture completion lacks research scope or final comparison")
+        if report.get("benchmark") == "orbital":
+            from .system import SystemCatalog
+            if set(report["comparison"].get("per_body", {})) != set(SystemCatalog.load().bodies):
+                raise ValueError("orbital comparison must cover every stock body")
+            for row in report["comparison"]["per_body"].values():
+                episodes(row)
+        elif report.get("benchmark") == "ascent":
+            episodes(report.get("four_stage"))
+        else:
+            raise ValueError("unknown architecture benchmark")
+    elif module == "orbiter.train_generalized":
         episodes(report.get("nominal"))
         episodes(report.get("four_stage_fresh_crafts", report.get("heldout_four_stage")))
         if not isinstance(report.get("selected_ancestry"), dict) or report.get("live_ksp_validated") is not False:
