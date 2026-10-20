@@ -370,7 +370,7 @@ class ResidualStudent(nn.Module):
         nn.init.zeros_(self.output.bias)
         self.register_buffer("bounds", torch.tensor(contract["residual_bounds"]))
 
-    def forward(self, observations, previous_actions, baseline_actions, hidden=None):
+    def forward(self, observations, previous_actions, baseline_actions, hidden=None, *, clamp=True):
         if observations.ndim != 3 or observations.shape[-1] != OBSERVATIONS:
             raise ValueError("student observations must have [crafts,time,56] shape")
         if previous_actions.shape != (*observations.shape[:2], 2) or baseline_actions.shape != previous_actions.shape:
@@ -385,7 +385,10 @@ class ResidualStudent(nn.Module):
             if hidden is not None:
                 raise ValueError("feedforward student has no recurrent state")
             features, hidden = self.memory(features), None
-        return (baseline_actions + self.bounds * self.output(features).tanh()).clamp(-1, 1), hidden
+        action = baseline_actions + self.bounds * self.output(features).tanh()
+        # Training fits the unclamped sum: past a bound, clamp(-1, 1) has zero
+        # gradient and a wrong-side residual could never be corrected.
+        return (action.clamp(-1, 1) if clamp else action), hidden
 
     def step(self, observation, previous_action, baseline_action, hidden=None):
         action, hidden = self(observation[:, None], previous_action[:, None], baseline_action[:, None], hidden)
@@ -470,7 +473,7 @@ def _sequence_pass(model, trajectories, *, batch_size, bptt_steps, optimizer=Non
             with torch.set_grad_enabled(optimizer is not None):
                 predicted, hidden = model(
                     batch["observations"][:, selected], batch["previous_actions"][:, selected],
-                    batch["baseline_actions"][:, selected], hidden,
+                    batch["baseline_actions"][:, selected], hidden, clamp=optimizer is None,
                 )
                 valid = batch["valid"][:, selected]
                 error = (predicted - batch["teacher_actions"][:, selected]).square()[valid]

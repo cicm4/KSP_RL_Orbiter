@@ -114,7 +114,7 @@ def test_squashed_entropy_gradient_discourages_saturation():
     ["--entropy-coefficient", "nan"],
     ["--initial-action-std", "0"],
     ["--initial-action-std", "nan"],
-    ["--initial-action-std", "0.2"],
+    ["--initial-action-std", "0.2", "--ppo-only"],
 ])
 def test_invalid_variant_cli_fails_before_output(tmp_path, extra):
     output = tmp_path / "not-created"

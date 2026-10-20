@@ -1224,7 +1224,20 @@ def main(argv=None):
     parser.add_argument("--critic-extra-updates", type=int, default=0)
     parser.add_argument(
         "--initial-action-std", type=float,
-        help="Explicitly reset latent Normal std after actor-only initialization",
+        help="Explicitly reset latent Normal std after actor-only initialization, "
+        "or before PPO after this run's imitation phase",
+    )
+    parser.add_argument(
+        "--bc-target-limit", type=float,
+        help="Clip imitation targets to +/-limit (e.g. 0.95) so tanh means stay finite",
+    )
+    parser.add_argument(
+        "--dagger-aggregate", action="store_true",
+        help="Fit each DAgger round on all previous rounds, not only the latest",
+    )
+    parser.add_argument(
+        "--dagger-max-samples", type=int,
+        help="Uniformly subsample the aggregated DAgger pool (default 2x the BC bank)",
     )
     parser.add_argument(
         "--physics", choices=("constant-cda", "aero"), default="constant-cda"
@@ -1268,8 +1281,12 @@ def main(argv=None):
     if args.initial_action_std is not None:
         if not math.isfinite(args.initial_action_std) or args.initial_action_std <= 0:
             parser.error("initial action std must be positive and finite")
-        if not args.actor_from:
-            parser.error("initial action std reset requires --actor-from")
+        if not args.actor_from and args.ppo_only:
+            parser.error("initial action std reset requires --actor-from or an imitation phase")
+    if args.bc_target_limit is not None and not 0 < args.bc_target_limit <= 1:
+        parser.error("BC target limit must be in (0, 1]")
+    if args.dagger_max_samples is not None and args.dagger_max_samples < 1:
+        parser.error("DAgger sample cap must be positive")
     if (
         sum(
             bool(item)
@@ -1541,10 +1558,23 @@ def main(argv=None):
 
         if args.warm_start or args.transfer_from or args.actor_from:
             select("warm_start")
+        def imitation_targets(actions):
+            if args.bc_target_limit is None:
+                return actions
+            return actions.clamp(-args.bc_target_limit, args.bc_target_limit)
+
         if not args.ppo_only:
+            ancestry["imitation"] = dict(
+                target_limit=args.bc_target_limit,
+                dagger_pool="aggregate" if args.dagger_aggregate else "original_subsample_plus_latest",
+                dagger_max_samples=args.dagger_max_samples,
+            )
             original_obs, original_actions, summary = collect_labels(
                 model, env, steps=args.label_steps, expert_mixing=1.0
             )
+            original_actions = imitation_targets(original_actions)
+            pool_obs, pool_actions = original_obs, original_actions
+            pool_cap = args.dagger_max_samples or 2 * len(original_obs)
             ancestry["bc_transitions"] = summary["transitions"]
             log("teacher_collection", **summary)
             loss = fit_actor(
@@ -1569,28 +1599,49 @@ def main(argv=None):
                 )
                 ancestry["dagger_transitions"] += summary["transitions"]
                 log("dagger_collection", round=round_index + 1, **summary)
-                keep = torch.randperm(len(original_obs), device=args.device)[
-                    : min(len(obs), len(original_obs))
-                ]
+                actions = imitation_targets(actions)
+                if args.dagger_aggregate:
+                    pool_obs = torch.cat((pool_obs, obs))
+                    pool_actions = torch.cat((pool_actions, actions))
+                    if len(pool_obs) > pool_cap:
+                        keep = torch.randperm(len(pool_obs), device=args.device)[:pool_cap]
+                        pool_obs, pool_actions = pool_obs[keep], pool_actions[keep]
+                    fit_obs, fit_actions = pool_obs, pool_actions
+                else:
+                    keep = torch.randperm(len(original_obs), device=args.device)[
+                        : min(len(obs), len(original_obs))
+                    ]
+                    fit_obs = torch.cat((original_obs[keep], obs))
+                    fit_actions = torch.cat((original_actions[keep], actions))
                 loss = fit_actor(
                     model,
-                    torch.cat((original_obs[keep], obs)),
-                    torch.cat((original_actions[keep], actions)),
+                    fit_obs,
+                    fit_actions,
                     updates=args.bc_updates,
                     batch_size=args.batch_size,
                     optimizer=optimizer,
                 )
+                del fit_obs, fit_actions
                 log("dagger_fit", round=round_index + 1, action_mse=loss)
                 select(f"dagger_{round_index + 1}")
         if args.ppo_updates:
             if not args.ppo_only:
-                del original_obs, original_actions
+                del original_obs, original_actions, pool_obs, pool_actions
                 if args.dagger_rounds:
-                    del obs, actions, keep
+                    del obs, actions
             if args.device.startswith("cuda"):
                 torch.cuda.empty_cache()
             model, record = load_policy(args.run_dir / "best.pt", device=args.device)
             ancestry = record["ancestry"]
+            if args.initial_action_std is not None and not args.actor_from:
+                # Imitation leaves log-std at its initial value (exp(-3) for a
+                # fresh VehiclePolicy); reset exploration before PPO starts.
+                ancestry["ppo_exploration_reset"] = dict(
+                    parent_action_std=model.log_std.detach().exp().cpu().tolist(),
+                    initial_action_std=args.initial_action_std,
+                )
+                with torch.no_grad():
+                    model.log_std.fill_(math.log(args.initial_action_std))
             if args.value_updates:
                 if args.actor_from:
                     # Paired arms use the same deterministic actor/world rollout

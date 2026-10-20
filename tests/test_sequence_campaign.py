@@ -163,3 +163,85 @@ def test_real_trainer_sigterm_preserves_best_and_latest(tmp_path):
         assert json.loads((root/'latest.metadata.json').read_text())['ancestry']['interrupted']
     finally:
         if process.poll() is None:process.kill();process.wait()
+
+
+def test_scaled_actions_reach_bounds_at_finite_latent_and_invert_teacher_labels():
+    torch.manual_seed(4)
+    policy = SequencePolicy('mlp256', 35, 3, 1, action_transform='scaled_tanh',
+                            action_scale=1.05, deadzone=.2)
+    labels = torch.tensor([[1., 1., -1.], [0., 0., 0.], [.05, 0, 0], [.3, -.4, .1]])
+    labels[0] /= labels[0].norm()
+    target = policy.squashed_target(labels)
+    assert target.abs().max() < 1/1.05+1e-6  # finite atanh: no unbounded BC pull
+    torch.testing.assert_close(policy.execute(target), labels)
+    # Exploration noise around a coasting mean executes exactly zero thrust.
+    noise = .1*torch.randn(1000, 3)
+    assert (policy.execute(noise.tanh()).norm(dim=-1) == 0).float().mean() > .5
+    ascent = SequencePolicy('mlp256', 56, 2, 1, action_transform='scaled_tanh', action_scale=1.05)
+    full = torch.tensor([[1., 1.]])
+    torch.testing.assert_close(ascent.execute(ascent.squashed_target(full)), full)
+    assert torch.equal(ascent.execute(torch.tensor([[.97, -.99]])), torch.tensor([[1., -1.]]))
+    with pytest.raises(ValueError):
+        SequencePolicy('mlp256', 56, 2, 1, deadzone=.2)  # v1 tanh mapping is unchanged
+
+
+def test_v2_orbital_features_resolve_small_body_delta_v_and_sun_shaping():
+    v1, v2 = BatchedCapture(136, seed=3), BatchedCapture(136, seed=3, version=2)
+    o1, o2 = v1.observation(), v2.observation()
+    assert o1.shape == (136, 32) and o2.shape == (136, 35) and v2.task.endswith('_v2')
+    assert (o1[:, 15].abs() >= 10).any() and not (o2[:, 15].abs() >= 10).any()
+    raw = v2.isp*9.80665*(v2.mass/v2.dry_mass).log()/v2.V
+    torch.testing.assert_close(o2[:, 15], raw.log1p().float())
+    sun = v2.body == v2.names.index('Sun')
+    assert v1.potential()[sun].abs().max() < 1e-3 < v2.potential()[sun].abs().min()
+    active = torch.ones(136, dtype=torch.bool); successes = 0
+    for _ in range(402):
+        _, _, done, info = v2.step(v2.teacher(), active)
+        successes += int((info['success'] & active).sum()); active &= ~done
+        if not active.any(): break
+    assert not active.any() and successes > 40
+
+
+def test_critic_warmup_freezes_actor_and_anchor_decays():
+    from types import SimpleNamespace
+    from orbiter.train_architectures import anchor_coefficient, ppo_update
+    args = SimpleNamespace(device='cpu', epochs=2, batch_size=8, target_kl=10., entropy=.001,
+                           critic_extra=1, bc_coef=1., bc_decay_updates=4)
+    assert [anchor_coefficient(args, u) for u in (1, 3, 5)] == [1., .5, 0.]
+    policy = SequencePolicy('mlp256', 32, 3, 1, action_transform='scaled_tanh', action_scale=1.05)
+    h = History(8, 1, 32, 3, 'cpu'); h.append(torch.randn(8, 32))
+    with torch.no_grad(): _, latent, logp = policy.sample(h.data)
+    actor = torch.optim.Adam([*policy.actor.parameters(), policy.log_std], lr=1e-3)
+    critic = torch.optim.Adam(policy.critic.parameters(), lr=1e-3)
+    before = {k: v.clone() for k, v in policy.actor.state_dict().items()}
+    data = (h.data, latent, logp, torch.randn(8), torch.ones(8))
+    report = ppo_update(policy, data, actor, critic, args, train_actor=False)
+    assert report['actor_steps'] == 0 and report['critic_steps'] == 3 and report['critic_warmup']
+    assert all(torch.equal(v, policy.actor.state_dict()[k]) for k, v in before.items())
+    anchor = (h.data, torch.zeros(8, 3))
+    report = ppo_update(policy, data, actor, critic, args, anchor=anchor, anchor_coef=1.)
+    assert report['actor_steps'] == 2 and report['anchor_mse'] is not None
+
+
+def test_v2_trainer_completes_with_warmup_anchor_and_loads_selected_policy(tmp_path):
+    from orbiter.train_architectures import load, main
+    root = tmp_path/'run'
+    main(['--run-dir', str(root), '--task', 'orbital', '--architecture', 'gru', '--device', 'cpu',
+          '--worlds', '17', '--horizon', '3', '--updates', '2', '--label-worlds', '17',
+          '--label-steps', '6', '--bc-updates', '3', '--batch-size', '17', '--cpu-threads', '1',
+          '--eval-worlds', '17', '--test-worlds', '17', '--critic-warmup', '2', '--context', '4',
+          '--validation-interval', '1', '--skip-qualification'])
+    events = [json.loads(x) for x in (root/'events.jsonl').read_text().splitlines()]
+    kinds = [e['event'] for e in events]
+    assert kinds.count('critic_warmup') == 2 and kinds.count('ppo') == 2 and 'bc_latent' in kinds
+    ppo = [e for e in events if e['event'] == 'ppo']
+    assert ppo[0]['anchor_coef'] == 1. and ppo[1]['anchor_coef'] == 0.
+    assert 'latent_saturation' in ppo[0] and 'explained_variance' in ppo[0]
+    summary = json.loads((root/'summary.json').read_text())
+    assert summary['task'] == 'matched_history_architecture_research_v2'
+    from orbiter.overnight_suite import validate_report
+    validate_report('orbiter.train_architectures', summary)
+    model, metadata = load(root/'best.pt')
+    assert model.spec['action_transform'] == 'scaled_tanh' and model.spec['deadzone'] == .2
+    assert metadata['contract']['orbital_benchmark_version'] == 2
+    assert metadata['contract']['policy_spec']['observations'] == 35

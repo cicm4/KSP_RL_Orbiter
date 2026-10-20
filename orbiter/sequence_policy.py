@@ -85,13 +85,39 @@ class Core(nn.Module):
         return self.output(x)
 
 
+ACTION_TRANSFORMS = ("tanh", "scaled_tanh")
+
+
 class SequencePolicy(nn.Module):
-    def __init__(self, architecture, observations, actions, context=16, initial_std=.15):
+    """Tanh-Gaussian actor with an optional saturation-free action mapping.
+
+    ``tanh`` is the original v1 mapping: action = tanh(z). Teacher labels at
+    exactly +/-1 (full throttle, vertical pitch) then drive z without bound,
+    and a small Normal std cannot explore those dimensions at all.
+    ``scaled_tanh`` executes clamp(action_scale * tanh(z), -1, 1), so the
+    bounds are reached at finite z. An optional norm deadzone maps short
+    action vectors to exactly zero (orbital coasting under exploration noise).
+    PPO ratios use the stored latent z, so this deterministic mapping does
+    not bias the likelihood ratio.
+    """
+
+    def __init__(self, architecture, observations, actions, context=16, initial_std=.15,
+                 action_transform="tanh", action_scale=1., deadzone=0.):
         super().__init__()
-        if architecture not in ARCHITECTURES or context < 1 or not 0 < initial_std <= 2:
+        if (architecture not in ARCHITECTURES or context < 1 or not 0 < initial_std <= 2
+                or action_transform not in ACTION_TRANSFORMS):
             raise ValueError("invalid sequence policy configuration")
+        if action_transform == "tanh" and (action_scale != 1 or deadzone != 0):
+            raise ValueError("the original tanh mapping has no scale or deadzone")
+        if not 1 <= action_scale <= 1.5 or not 0 <= deadzone < .5:
+            raise ValueError("invalid action scale or deadzone")
         self.spec = dict(architecture=architecture, observations=observations,
                          actions=actions, context=context, initial_std=initial_std)
+        if action_transform != "tanh":
+            # v1 checkpoints keep their original spec (and loader) unchanged.
+            self.spec.update(action_transform=action_transform,
+                             action_scale=action_scale, deadzone=deadzone)
+        self.action_scale, self.deadzone = action_scale, deadzone
         features = observations + actions + 1
         self.actor = Core(architecture, features, actions, context)
         self.critic = Core(architecture, features, 1, context)
@@ -100,8 +126,27 @@ class SequencePolicy(nn.Module):
     def distribution(self, history):
         return torch.distributions.Normal(self.actor(history), self.log_std.exp())
 
+    def execute(self, squashed):
+        """Map tanh(z) in (-1, 1) to the executed environment action."""
+        action = (self.action_scale * squashed).clamp(-1, 1)
+        if self.deadzone:
+            norm = action.norm(dim=-1, keepdim=True)
+            gain = ((norm - self.deadzone) / (1 - self.deadzone)).clamp(min=0)
+            action = action / norm.clamp(min=1e-12) * gain
+        return action
+
+    def squashed_target(self, action):
+        """Inverse of ``execute`` for teacher labels, strictly inside (-1, 1)."""
+        action = action.clamp(-1, 1)
+        if self.deadzone:
+            norm = action.norm(dim=-1, keepdim=True)
+            scale = torch.where(norm > 0, (self.deadzone + (1 - self.deadzone) * norm)
+                                / norm.clamp(min=1e-12), 0)
+            action = action * scale
+        return action / self.action_scale
+
     def forward(self, history):
-        return self.actor(history).tanh()
+        return self.execute(self.actor(history).tanh())
 
     @staticmethod
     def log_probability(distribution, latent):
@@ -112,4 +157,4 @@ class SequencePolicy(nn.Module):
     def sample(self, history):
         distribution = self.distribution(history)
         latent = distribution.sample()
-        return latent.tanh(), latent, self.log_probability(distribution, latent)
+        return self.execute(latent.tanh()), latent, self.log_probability(distribution, latent)

@@ -287,7 +287,8 @@ def validate_report(module, report):
 
     if module == "orbiter.train_architectures":
         episodes(report.get("comparison"))
-        if (report.get("task") != "matched_history_architecture_research_v1"
+        if (report.get("task") not in ("matched_history_architecture_research_v1",
+                                       "matched_history_architecture_research_v2")
                 or report.get("interrupted") is not False
                 or report.get("live_ksp_validated") is not False
                 or report.get("final_tests_select_checkpoint") is not False):

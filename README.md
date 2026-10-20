@@ -291,8 +291,18 @@ the student-rollout procedure in [RAPTOR](https://arxiv.org/html/2509.11481v2).
 PPO also has opt-in `--ppo-optimizer separate`, actor/critic learning rates and
 gradient limits, `--critic-extra-updates`, and `--entropy-coefficient`. These
 variants use strict v6 training contracts. `--initial-action-std` explicitly resets
-exploration only with a fresh actor-only parent and records the reset in ancestry.
-Defaults retain the historical optimizer and objective behavior.
+exploration with a fresh actor-only parent, or before PPO after the run's own
+imitation phase, and records the reset in ancestry. Defaults retain the historical
+optimizer and objective behavior.
+
+The heuristic teacher's full-throttle and vertical-pitch labels sit exactly at the
+tanh bounds. Fitting them with MSE drives latent means without bound, and with the
+default `exp(-3)` std PPO then barely explores: in the overnight 1c5192b suite every
+low-std arm hit the KL limit on all 300 updates, while the std-0.15 arms reached
+94–97% fresh-craft success. For new imitation runs use `--bc-target-limit 0.95`,
+`--initial-action-std 0.15` and `--dagger-aggregate` (each round fits the whole
+DAgger pool, capped by `--dagger-max-samples`, default twice the BC bank).
+`orbiter.train_dagger_student` now defaults to `--dataset-mode aggregate`.
 
 `orbiter.overnight_suite` executes a frozen JSON plan containing explicit command
 arrays, input/source hashes, per-job time limits and output paths. It runs one
@@ -666,6 +676,24 @@ trailing history (default 16 observations plus executed previous actions).
 History is cleared at every episode boundary and recomputed during PPO updates.
 The Transformer attends only to the available history; dropout is disabled.
 These are bounded-history policies, not unbounded recurrent-state controllers.
+
+Version 2 of this benchmark (the default) changes the training recipe:
+
+- Actions execute `clamp(1.05 * tanh(z), -1, 1)`, so bounds are reached at finite
+  latent values, and teacher labels are fitted through the inverse mapping. Orbital
+  actions also have a 0.2 norm deadzone, so exploration noise around a coasting
+  mean executes zero thrust.
+- PPO begins with 16 critic-only rollouts (`--critic-warmup`), and a behavior-cloning
+  anchor to the teacher bank decays linearly from `--bc-coef 1` to zero over the
+  first half of the updates.
+- Orbital observations v2 log-scale remaining delta-v (v1 clips it for every small
+  body), add apse/plane errors in tolerance units, and add logarithmic
+  tolerance-unit shaping so Sun cases are no longer effectively sparse.
+- Validation banks default to 544 cases; minibatches are reshuffled each epoch.
+
+`--action-transform tanh --orbital-version 1 --bc-coef 0 --critic-warmup 0`
+restores the v1 action mapping, observations and PPO start; v1 checkpoints still
+load and evaluate.
 
 Two benchmark contracts are separate. `--task ascent` uses the established
 Kerbin 2–4-stage surrogate and requires `--actor-from` pointing to a frozen

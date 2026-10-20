@@ -212,7 +212,7 @@ def main(argv=None):
     p.add_argument("--run-dir", type=Path, required=True)
     p.add_argument("--device", default="cpu")
     p.add_argument("--architecture", choices=("feedforward", "gru"), default="gru")
-    p.add_argument("--dataset-mode", choices=("recent", "aggregate"), default="recent")
+    p.add_argument("--dataset-mode", choices=("recent", "aggregate"), default="aggregate")
     p.add_argument("--rounds", type=int, default=20)
     p.add_argument("--warmup-epochs", type=int, default=10)
     p.add_argument("--epochs-per-round", type=int, default=10)

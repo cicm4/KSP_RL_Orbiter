@@ -25,7 +25,9 @@ from .generalized_aero_env import BatchedAeroAscent
 from .sequence_policy import ARCHITECTURES, History, SequencePolicy
 from .train_generalized import experiment_contract, load_policy, write_json
 
-TASK = "matched_history_architecture_research_v1"
+TASK = "matched_history_architecture_research_v2"
+# v1 checkpoints (tanh actions, v1 orbital observations) remain loadable.
+TASKS = ("matched_history_architecture_research_v1", TASK)
 STOP = False
 
 
@@ -52,9 +54,9 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def make_env(task, count, device, seed, *, four_stage=False):
+def make_env(task, count, device, seed, *, four_stage=False, orbital_version=2):
     if task == 'orbital':
-        return BatchedCapture(count, device=device, seed=seed)
+        return BatchedCapture(count, device=device, seed=seed, version=orbital_version)
     envelope, four, _ = experiment_contract('stock', 'aero', deadline_mode='terminal', timeout_penalty=-30)
     env = AscentBenchmark(count, device=device, seed=seed,
                            envelope=four if four_stage else envelope,
@@ -75,10 +77,10 @@ def save(path, model, contract, ancestry):
 
 def load(path, device='cpu'):
     metadata = json.loads(path.with_suffix('.metadata.json').read_text())
-    if metadata['task'] != TASK or metadata['sha256'] != sha(path):
+    if metadata['task'] not in TASKS or metadata['sha256'] != sha(path):
         raise ValueError('architecture checkpoint contract/hash mismatch')
     record = torch.load(path, map_location=device, weights_only=True)
-    if record['task'] != TASK or record['contract'] != metadata['contract'] or record['ancestry'] != metadata['ancestry']:
+    if record['task'] != metadata['task'] or record['contract'] != metadata['contract'] or record['ancestry'] != metadata['ancestry']:
         raise ValueError('architecture checkpoint metadata mismatch')
     model = SequencePolicy(**record['spec']).to(device)
     model.load_state_dict(record['state_dict'], strict=True)
@@ -141,8 +143,9 @@ def qualify_capture(case, actions, terminal):
 
 
 @torch.no_grad()
-def evaluate(model, task, count, device, seed, *, four_stage=False, qualify=False, teacher=False):
-    env=make_env(task,count,device,seed,four_stage=four_stage)
+def evaluate(model, task, count, device, seed, *, four_stage=False, qualify=False, teacher=False,
+             orbital_version=2):
+    env=make_env(task,count,device,seed,four_stage=four_stage,orbital_version=orbital_version)
     view=cpu_view(env)
     if task=='orbital':view._export_telemetry=view.telemetry()
     cases=[view.export_case(i) if task=='orbital' else asdict(view.export_config(i)) for i in range(count)]
@@ -206,7 +209,14 @@ def evaluate(model, task, count, device, seed, *, four_stage=False, qualify=Fals
 
 
 def fit_teacher(model, task, parent, args, log):
-    env=make_env(task,args.label_worlds,args.device,args.seed+100000)
+    """Behavior-clone the teacher; return the label bank for the PPO anchor.
+
+    Labels are fitted in tanh space through the policy's inverse action
+    mapping. With ``scaled_tanh`` the targets lie strictly inside (-1, 1), so
+    full-throttle/vertical labels no longer push latent means without bound.
+    """
+    env=make_env(task,args.label_worlds,args.device,args.seed+100000,
+                 orbital_version=args.orbital_version)
     history=History(env.count,model.spec['context'],env.observations,env.actions,args.device)
     history.append(env.observation())
     observations,labels=[],[]
@@ -219,7 +229,7 @@ def fit_teacher(model, task, parent, args, log):
             obs,_,done,_=env.step(action)
             env.reset(done);obs=env.observation()
             history.append(obs,action,done)
-    x=torch.cat(observations);y=torch.cat(labels)
+    x=torch.cat(observations);y=model.squashed_target(torch.cat(labels))
     fingerprint=hashlib.sha256(x.detach().cpu().numpy().tobytes()).hexdigest()
     observations_sha=hashlib.sha256(x[:,-1,:env.observations].contiguous().cpu().numpy().tobytes()).hexdigest()
     labels_sha=hashlib.sha256(y.contiguous().cpu().numpy().tobytes()).hexdigest()
@@ -231,18 +241,30 @@ def fit_teacher(model, task, parent, args, log):
     for update in range(args.bc_updates):
         check_stop()
         ids=torch.randint(len(x),(min(args.batch_size,len(x)),),generator=rng,device=args.device)
-        loss=(model(x[ids])-y[ids]).square().mean()
+        loss=(model.actor(x[ids]).tanh()-y[ids]).square().mean()
         optimizer.zero_grad();loss.backward();torch.nn.utils.clip_grad_norm_(model.actor.parameters(),.5);optimizer.step()
         if (update+1)%100==0:log('bc',update=update+1,action_mse=float(loss.detach()))
-    del x,y,observations,labels,env
+    with torch.no_grad():
+        latent=torch.cat([model.actor(chunk) for chunk in x.split(8192)])
+        log('bc_latent',mean_abs=float(latent.abs().mean()),max_abs=float(latent.abs().max()),
+            saturated_fraction=float((latent.tanh().abs()>.99).float().mean()))
+    del observations,labels,env
+    return x,y
 
 
-def ppo_update(model, data, actor_optimizer, critic_optimizer, args):
+def anchor_coefficient(args, update):
+    """Linearly decaying behavior-cloning anchor toward the teacher bank."""
+    if not args.bc_coef or update > args.bc_decay_updates:
+        return 0.
+    return args.bc_coef*(1-(update-1)/max(1,args.bc_decay_updates))
+
+
+def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=None,
+               anchor_coef=0., train_actor=True):
     histories,latents,old_logp,advantages,returns=data
-    ids=torch.randperm(len(histories),device=args.device)
-    actor_steps=critic_steps=0;last_kl=0.;stopped=False
-    for _ in range(args.epochs):
-        for indices in ids.split(args.batch_size):
+    actor_steps=critic_steps=0;last_kl=0.;stopped=False;anchor_loss=None
+    for _ in range(args.epochs if train_actor else 0):
+        for indices in torch.randperm(len(histories),device=args.device).split(args.batch_size):
             check_stop()
             x=histories[indices];latent=latents[indices];target=returns[indices]
             dist=model.distribution(x);logp=model.log_probability(dist,latent)
@@ -254,6 +276,11 @@ def ppo_update(model, data, actor_optimizer, critic_optimizer, args):
             policy_loss=-torch.minimum(ratio*adv,ratio.clamp(.8,1.2)*adv).mean()
             sample=dist.rsample();entropy=-model.log_probability(dist,sample).mean()
             actor_loss=policy_loss-args.entropy*entropy
+            if anchor is not None and anchor_coef>0:
+                bank_x,bank_y=anchor
+                chosen=torch.randint(len(bank_x),(len(indices),),device=args.device)
+                anchor_loss=(model.actor(bank_x[chosen]).tanh()-bank_y[chosen]).square().mean()
+                actor_loss=actor_loss+anchor_coef*anchor_loss
             actor_optimizer.zero_grad();actor_loss.backward()
             torch.nn.utils.clip_grad_norm_([*model.actor.parameters(),model.log_std],.5)
             actor_optimizer.step();actor_steps+=1
@@ -261,13 +288,15 @@ def ppo_update(model, data, actor_optimizer, critic_optimizer, args):
             critic_optimizer.zero_grad();value_loss.backward();torch.nn.utils.clip_grad_norm_(model.critic.parameters(),.5)
             critic_optimizer.step();critic_steps+=1
         if stopped:break
-    for _ in range(args.critic_extra):
+    for _ in range(args.critic_extra if train_actor else args.critic_extra+args.epochs*math.ceil(len(histories)/args.batch_size)):
         check_stop()
         indices=torch.randint(len(histories),(min(args.batch_size,len(histories)),),device=args.device)
         loss=(model.critic(histories[indices]).squeeze(-1)-returns[indices]).square().mean()
         critic_optimizer.zero_grad();loss.backward();torch.nn.utils.clip_grad_norm_(model.critic.parameters(),.5)
         critic_optimizer.step();critic_steps+=1
-    return dict(actor_steps=actor_steps,critic_steps=critic_steps,last_kl=last_kl,kl_early_stop=stopped)
+    return dict(actor_steps=actor_steps,critic_steps=critic_steps,last_kl=last_kl,kl_early_stop=stopped,
+                anchor_coef=anchor_coef,anchor_mse=None if anchor_loss is None else float(anchor_loss.detach()),
+                critic_warmup=not train_actor)
 
 
 def train(args):
@@ -281,9 +310,12 @@ def train(args):
     root=args.run_dir
     if root.exists() and any(root.iterdir()):raise ValueError('run directory must be empty')
     root.mkdir(parents=True,exist_ok=True)
-    env=make_env(args.task,args.worlds,args.device,args.seed)
+    env=make_env(args.task,args.worlds,args.device,args.seed,orbital_version=args.orbital_version)
     context=args.context if not args.architecture.startswith('mlp') else 1
-    model=SequencePolicy(args.architecture,env.observations,env.actions,context).to(args.device)
+    policy_options=dict(initial_std=args.initial_std,action_transform=args.action_transform)
+    if args.action_transform!='tanh':
+        policy_options.update(action_scale=args.action_scale,deadzone=args.deadzone)
+    model=SequencePolicy(args.architecture,env.observations,env.actions,context,**policy_options).to(args.device)
     parent=None
     if args.task=='ascent':
         if args.actor_from is None:raise ValueError('ascent benchmark requires frozen teacher')
@@ -293,12 +325,17 @@ def train(args):
         architecture_parameters=sum(p.numel() for p in model.parameters()),
         body_names=list(env.names) if args.task=='orbital' else ['Kerbin'],
         body_catalog_sha256=getattr(env,'catalog_sha256',None),
+        orbital_benchmark_version=args.orbital_version if args.task=='orbital' else None,
+        orbital_benchmark_task=env.task if args.task=='orbital' else None,
         scope='17-body local orbital control; Sun bound-orbit adjustment; no interbody transfer' if args.task=='orbital' else 'Kerbin planar launch',
         history_semantics='fixed trailing observation/executed-action window, zero at each episode reset',
         training=dict(worlds=args.worlds,horizon=args.horizon,updates=args.updates,bc_updates=args.bc_updates,
             label_worlds=args.label_worlds,label_steps=args.label_steps,actor_lr=args.actor_lr,
             critic_lr=args.critic_lr,entropy=args.entropy,critic_extra=args.critic_extra,
-            batch_size=args.batch_size,epochs=args.epochs,target_kl=args.target_kl),
+            batch_size=args.batch_size,epochs=args.epochs,target_kl=args.target_kl,
+            bc_target='policy_inverse_action_mapping',bc_coef=args.bc_coef,
+            bc_decay_updates=args.bc_decay_updates,critic_warmup=args.critic_warmup,
+            minibatch_permutation='fresh_each_epoch'),
         validation_seed=args.validation_seed,comparison_seed=args.test_seed,
         comparison_selects_weights=False,live_ksp_validated=False,
         limitations=['No actual KSP qualification','Local skill scores do not measure complete missions',
@@ -321,7 +358,8 @@ def train(args):
     previous_handlers={sig:signal.signal(sig,request_stop) for sig in [signal.SIGTERM,signal.SIGINT]}
     def validate(phase,update):
         nonlocal best_score,selected_update
-        report=evaluate(model,args.task,args.eval_worlds,args.device,args.validation_seed)
+        report=evaluate(model,args.task,args.eval_worlds,args.device,args.validation_seed,
+                        orbital_version=args.orbital_version)
         write_json(root/f'validation_{phase}.json',report)
         score=report['macro_body_success_rate']
         if score>best_score:
@@ -335,15 +373,18 @@ def train(args):
         save(root/'latest.pt',model,contract,ancestry)
     try:
         ancestry['phase']='teacher_warmup'
-        fit_teacher(model,args.task,parent,args,log)
+        anchor=fit_teacher(model,args.task,parent,args,log)
+        if not args.bc_coef:anchor=None
         del parent
         validate('teacher_warmup',0)
-        env=make_env(args.task,args.worlds,args.device,args.seed+300000)
+        env=make_env(args.task,args.worlds,args.device,args.seed+300000,orbital_version=args.orbital_version)
         history=History(args.worlds,context,env.observations,env.actions,args.device)
         history.append(env.observation())
         actor_optimizer=torch.optim.Adam([*model.actor.parameters(),model.log_std],lr=args.actor_lr)
         critic_optimizer=torch.optim.Adam(model.critic.parameters(),lr=args.critic_lr)
-        for update in range(1,args.updates+1):
+        # Negative updates fit only the fresh critic to the imitation actor's
+        # returns; the actor and its selection ancestry are unchanged.
+        for update in range(1-args.critic_warmup,args.updates+1):
             check_stop();tick=time.monotonic();xs=[];zs=[];lps=[];values=[];rewards=[];dones=[]
             rollout_successes=rollout_episodes=0
             with torch.no_grad():
@@ -363,17 +404,29 @@ def train(args):
                 advantages=torch.stack(advantages[::-1]).flatten()
                 advantages=(advantages-advantages.mean())/(advantages.std()+1e-8)
                 targets=torch.stack(returns[::-1]).flatten()
-            stats=ppo_update(model,(torch.cat(xs),torch.cat(zs),torch.cat(lps),advantages,targets),
-                             actor_optimizer,critic_optimizer,args)
+                latent_all=torch.cat(zs)
+                saturation=float((latent_all.tanh().abs()>.99).float().mean())
+                explained=1-float((targets-torch.cat(values)).var()/(targets.var()+1e-8))
+            stats=ppo_update(model,(torch.cat(xs),latent_all,torch.cat(lps),advantages,targets),
+                             actor_optimizer,critic_optimizer,args,anchor=anchor,
+                             anchor_coef=anchor_coefficient(args,update) if update>0 else 0.,
+                             train_actor=update>0)
+            if update<=0:
+                log('critic_warmup',update=update,elapsed_s=time.monotonic()-tick,
+                    explained_variance=explained,**stats)
+                continue
             ancestry.update(phase='ppo',update=update,selected_update=selected_update,
                             transitions=update*args.worlds*args.horizon)
             log('ppo',update=update,transitions=ancestry['transitions'],elapsed_s=time.monotonic()-tick,
                  rollout_episodes=rollout_episodes,rollout_successes=rollout_successes,
-                 action_std=model.log_std.detach().exp().cpu().tolist(),**stats)
+                 action_std=model.log_std.detach().exp().cpu().tolist(),
+                 latent_saturation=saturation,explained_variance=explained,
+                 gaussian_entropy=float((model.log_std.detach()+.5*math.log(2*math.pi*math.e)).sum()),**stats)
             if update%args.validation_interval==0 or update==args.updates:validate(f'ppo_{update}',update)
         selected,metadata=load(root/'best.pt',args.device)
         comparison=evaluate(selected,args.task,args.test_worlds,args.device,args.test_seed,
-                            qualify=args.task=='orbital' and not args.skip_qualification)
+                            qualify=args.task=='orbital' and not args.skip_qualification,
+                            orbital_version=args.orbital_version)
         write_json(root/'test_comparison.json',comparison)
         summary=dict(task=TASK,benchmark=args.task,comparison={k:v for k,v in comparison.items() if k!='results'},
                      selected_ancestry=metadata['ancestry'],interrupted=False,live_ksp_validated=False,
@@ -391,7 +444,7 @@ def train(args):
             summary['parent_reference']={k:v for k,v in reference_report.items() if k!='results'}
         else:
             reference_report=evaluate(None,args.task,args.test_worlds,args.device,args.test_seed,
-                 teacher=True,qualify=not args.skip_qualification)
+                 teacher=True,qualify=not args.skip_qualification,orbital_version=args.orbital_version)
             write_json(root/'test_teacher_reference.json',reference_report)
             summary['teacher_reference']={k:v for k,v in reference_report.items() if k!='results'}
         write_json(root/'summary.json',summary);log('complete',summary=summary)
@@ -416,9 +469,17 @@ def main(argv=None):
     p.add_argument('--test-seed',type=int,default=5600505)
     for flag,default in [('worlds',2048),('horizon',64),('updates',400),('batch-size',1024),
                          ('epochs',4),('context',16),('bc-updates',1000),('label-worlds',256),
-                         ('label-steps',128),('critic-extra',32),('eval-worlds',136),
-                         ('test-worlds',544),('validation-interval',50),('cpu-threads',2)]:
+                         ('label-steps',512),('critic-extra',32),('eval-worlds',544),
+                         ('test-worlds',544),('validation-interval',50),('cpu-threads',2),
+                         ('critic-warmup',16)]:
         p.add_argument('--'+flag,type=int,default=default)
+    p.add_argument('--orbital-version',type=int,choices=[1,2],default=2)
+    p.add_argument('--action-transform',choices=['tanh','scaled_tanh'],default='scaled_tanh')
+    p.add_argument('--action-scale',type=float,default=1.05)
+    p.add_argument('--deadzone',type=float,help='orbital default .2; ascent default 0')
+    p.add_argument('--initial-std',type=float,default=.15)
+    p.add_argument('--bc-coef',type=float,default=1.,help='initial teacher-anchor weight during PPO')
+    p.add_argument('--bc-decay-updates',type=int,help='anchor decays linearly to zero (default updates/2)')
     p.add_argument('--actor-lr',type=float,default=1e-5)
     p.add_argument('--critic-lr',type=float,default=3e-4)
     p.add_argument('--entropy',type=float,default=.001)
@@ -427,8 +488,18 @@ def main(argv=None):
     args=p.parse_args(argv)
     integers=['worlds','horizon','updates','batch_size','epochs','context','label_worlds',
               'label_steps','eval_worlds','test_worlds','validation_interval','cpu_threads']
-    if any(getattr(args,k)<1 for k in integers) or args.bc_updates<0 or args.critic_extra<0:
-        p.error('counts must be positive; BC/extra updates may be zero')
+    if any(getattr(args,k)<1 for k in integers) or args.bc_updates<0 or args.critic_extra<0 or args.critic_warmup<0:
+        p.error('counts must be positive; BC/extra/warm-up updates may be zero')
+    if args.deadzone is None:
+        args.deadzone=.2 if args.task=='orbital' and args.action_transform!='tanh' else 0.
+    if args.bc_decay_updates is None:args.bc_decay_updates=max(1,args.updates//2)
+    if args.action_transform=='tanh' and (args.deadzone or args.action_scale!=1.05):
+        p.error('the original tanh mapping takes no scale or deadzone')
+    if args.action_transform=='tanh':args.action_scale=1.
+    if not 1<=args.action_scale<=1.5 or not 0<=args.deadzone<.5 or not 0<args.initial_std<=2:
+        p.error('invalid action mapping or initial std')
+    if not math.isfinite(args.bc_coef) or args.bc_coef<0 or args.bc_decay_updates<1:
+        p.error('invalid behavior-cloning anchor')
     if args.task=='orbital' and (args.eval_worlds%17 or args.test_worlds%17):
         p.error('orbital evaluation banks must be balanced multiples of all 17 bodies')
     if not all(math.isfinite(x) and x>0 for x in [args.actor_lr,args.critic_lr,args.target_kl]) or not math.isfinite(args.entropy) or args.entropy<0:

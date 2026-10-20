@@ -479,3 +479,54 @@ def test_paired_final_rows_have_identical_craft_fingerprints_across_objectives(m
         assert len({arm[index]["elapsed"] for arm in rows}) == 1
     assert all(row["reason"] == 5 for arm in rows for row in arm)
     assert rows[2][0]["task_reward"] == rows[1][0]["task_reward"] - 30
+
+
+def test_imitation_limits_targets_aggregates_dagger_and_resets_std_before_ppo(
+    tmp_path, monkeypatch
+):
+    validation_calls = 0
+
+    def short_evaluation(_model, *, count, **_kwargs):
+        nonlocal validation_calls
+        validation_calls += 1
+        return {
+            "episodes": count,
+            "successes": min(validation_calls, count),
+            "success_rate": min(validation_calls, count) / count,
+            "success_ci95": [0, 1],
+            "failure_counts": {},
+        }
+
+    fits = []
+    original_fit = training.fit_actor
+
+    def recording_fit(model, observations, targets, **kwargs):
+        fits.append((len(observations), float(targets.abs().max())))
+        return original_fit(model, observations, targets, **kwargs)
+
+    monkeypatch.setattr(training, "evaluate", short_evaluation)
+    monkeypatch.setattr(training, "fit_actor", recording_fit)
+    monkeypatch.setattr(training, "cpu_parity", lambda *_a, **_k: {"passed": True})
+    monkeypatch.setattr(
+        training,
+        "evaluate_captured_transfer",
+        lambda *_a, **_k: {"policy": {"successes": 0, "episodes": 0}, "teacher": {"successes": 0}},
+    )
+    output = tmp_path / "run"
+    training.main([
+        "--run-dir", str(output), "--device", "cpu", "--curriculum", "stock",
+        "--worlds", "4", "--label-steps", "3", "--bc-updates", "2", "--dagger-rounds", "2",
+        "--ppo-updates", "1", "--value-updates", "0", "--horizon", "2", "--batch-size", "8",
+        "--eval-worlds", "8", "--hidden", "16", "--bc-target-limit", ".9",
+        "--dagger-aggregate", "--initial-action-std", ".15",
+    ])
+    # BC bank, then a pool that grows with every DAgger round (cap 2x BC bank).
+    assert [size for size, _ in fits] == [12, 24, 24]
+    assert all(limit <= .9 + 1e-6 for _, limit in fits)
+    _, record = training.load_policy(output / "best.pt")
+    ancestry = record["ancestry"]
+    assert ancestry["imitation"]["dagger_pool"] == "aggregate"
+    assert ancestry["imitation"]["target_limit"] == .9
+    reset = ancestry["ppo_exploration_reset"]
+    assert reset["initial_action_std"] == .15
+    assert all(abs(x - math.exp(-3)) < 1e-6 for x in reset["parent_action_std"])

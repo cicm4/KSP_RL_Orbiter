@@ -19,6 +19,11 @@ from .system import SystemCatalog
 
 TASK = "stock_all_body_batched_orbital_v1"
 OBSERVATIONS = 32
+# v2: log-scaled remaining delta-v (v1 pins it at the clip for every small
+# body), apse/plane errors in units of the success tolerance, and a bounded
+# tolerance-scaled shaping term. Without it the Sun's start potential is ~1e-5
+# and its band is effectively a sparse reward.
+VERSIONS = {1: (TASK, OBSERVATIONS), 2: ("stock_all_body_batched_orbital_v2", 35)}
 G0 = 9.80665
 
 
@@ -29,9 +34,13 @@ def unit(x):
 class BatchedCapture:
     observations, actions = OBSERVATIONS, 3
 
-    def __init__(self, count=1024, *, device="cpu", seed=0, bodies=None):
+    def __init__(self, count=1024, *, device="cpu", seed=0, bodies=None, version=1):
         if count < 1:
             raise ValueError("count must be positive")
+        if version not in VERSIONS:
+            raise ValueError("unknown orbital benchmark version")
+        self.version = version
+        self.task, self.observations = VERSIONS[version]
         self.count, self.device, self.dtype = count, torch.device(device), torch.float64
         self.generator = torch.Generator(device=self.device).manual_seed(seed)
         self.catalog = SystemCatalog.load()
@@ -168,7 +177,8 @@ class BatchedCapture:
                    d['eccentricity'], d['peri']/self.goal,
                    torch.nan_to_num(d['apo']/self.goal, posinf=10),
                    *local_normal.unbind(-1), *local_direction.unbind(-1),
-                   fuel, self.mass/self.initial_mass, dv/self.V,
+                   fuel, self.mass/self.initial_mass,
+                   dv/self.V if self.version == 1 else (dv/self.V).log1p(),
                    (d['authority']*self.T/self.V).log1p(),
                    (self.isp*G0/self.V).log1p(), self.radius/self.goal,
                    self.safe/self.goal, (self.soi/self.goal).log1p(),
@@ -179,13 +189,25 @@ class BatchedCapture:
                    (self.mu/1e10).log10(), (self.radius/600000).log10(),
                    (self.thrust/self.mass*self.T/self.V).log1p(),
                    self.dry_mass/self.initial_mass, self.tolerance/self.goal]
+        if self.version >= 2:
+            scalars += [(d['peri']-self.goal)/self.tolerance,
+                        torch.nan_to_num((d['apo']-self.goal)/self.tolerance, posinf=10),
+                        d['plane']/5]
         return torch.stack(scalars, -1).clamp(-10, 10).float()
 
     def potential(self):
         d = self.telemetry()
-        return -(4*(d['energy']/self.V.square()+.5).square()
-                 +8*(d['momentum']/(self.goal*self.V)-1).square()
-                 +4*(1-d['cosine'])+(d['radius']/self.goal-1).square()).clamp(max=30)
+        phi = -(4*(d['energy']/self.V.square()+.5).square()
+                +8*(d['momentum']/(self.goal*self.V)-1).square()
+                +4*(1-d['cosine'])+(d['radius']/self.goal-1).square()).clamp(max=30)
+        if self.version >= 2:
+            # Logarithmic in tolerance units: informative from hundreds of
+            # tolerances (Sun starts) down to the band, bounded for escapes.
+            peri = ((d['peri']-self.goal).abs()/self.tolerance).clamp(max=1e6)
+            apo = torch.nan_to_num((d['apo']-self.goal).abs()/self.tolerance,
+                                   posinf=1e6).clamp(max=1e6)
+            phi = phi - .25*(peri.log1p()+apo.log1p())
+        return phi
 
     def teacher(self):
         d = self.telemetry()
