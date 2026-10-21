@@ -1,11 +1,12 @@
 # KSP RL Orbiter
 
-Accelerated orbital-launch training with a headless Gymnasium simulator and
-an external kRPC autopilot for Kerbal Space Program. Train without running the
-game, calibrate against actual flight measurements, then validate the learned
-controller in KSP. A stock-toolbar KSP addon provides the in-game controls and
-starts the local Python flight engine. Training and policy execution stay in
-Python, connected to the game through kRPC.
+Accelerated orbital-launch training with a headless Gymnasium simulator, and a
+self-contained Kerbal Space Program addon that flies the learned policies inside
+the game. Train without running the game, calibrate against actual flight
+measurements, then fly the released policies with the **Orbiter Autopilot**
+addon: extract it into KSP's folder and press Run. The addon needs no Python,
+no kRPC and no setup. Training, research and the original kRPC tooling stay in
+Python.
 
 Three included ascent checkpoints have completed actual staged KSP launches:
 
@@ -57,8 +58,9 @@ Installed commands include `orbiter-train`, `orbiter-live`, `orbiter-validate`,
 `orbiter-train-capture`, `orbiter-mission`, `orbiter-control`, `orbiter-mod` and `orbiter-bootstrap`.
 The `python -m orbiter.<module>` forms also work.
 
-To fly through a control panel, place the **OrbiterRL Transfer** rocket on Kerbin's
-launchpad and start the kRPC server in KSP. Open
+Players should use the [self-contained addon](#ksp-addon-no-setup). For research,
+the original Python controller can also fly through kRPC: place the **OrbiterRL
+Transfer** rocket on Kerbin's launchpad and start the kRPC server in KSP. Open
 [Start Autopilot.command](<Start Autopilot.command>) on macOS, or run:
 
 ```sh
@@ -88,71 +90,79 @@ KSP encounter verification. A fresh launchpad Run then passed. The
 button flights, that failed attempt, the diagnostic, requests and final results.
 These individual demonstrations do not establish a repeated-flight success rate.
 
-### KSP toolbar addon
+### KSP addon (no setup)
 
-With the Python environment above, the Mono C# compiler (`mcs`), and kRPC
-installed in KSP, build and install against your own game assemblies:
+The **Orbiter Autopilot** addon runs the whole mission inside KSP 1.12: the
+learned ascent with staging, a Lambert transfer plan verified against KSP's own
+patched conics, the node burns, the learned capture and a one-orbit coast check.
+The two released policies are small tanh networks evaluated in C#; there is no
+Python, kRPC, network port or external process at runtime.
+
+To play: extract the release ZIP into the KSP folder so that
+`GameData/OrbiterAutopilot` sits beside `GameData/Squad`, and start KSP. On first
+start the addon builds **OrbiterRL Transfer** in `Ships/VAB` from your own stock
+`Orbiter One` and `Science Jr` craft (existing files are never overwritten, and no
+stock-derived craft is distributed). Launch it onto the pad, click **Orbiter** in
+the flight toolbar, choose **Mun** or **Minmus** and a **40–60 km** orbit, and
+press **Run**. **Stop** releases throttle and steering immediately. A preflight
+check refuses other craft, a moved stage plan, or a missing maneuver-node
+capability (Career needs upgraded Tracking Station or Mission Control). Each
+flight is logged as JSON lines in `GameData/OrbiterAutopilot/Logs`.
+
+The addon source is in `orbiter/native`: `Core/` holds the Unity-free policy,
+observation, orbital-mechanics, planner and craft-builder ports, and `Ksp/` the
+telemetry, attitude controller, mission runner and toolbar UI.
+`tests/test_native_core.py` compiles the core with Mono and checks it against the
+Python on the same inputs: the policies match SB3 `predict` within 2e-6, the
+ascent observation is bit-identical, and the transfer planner, Kepler and Lambert
+solvers match to 1e-8. The generated craft is byte-identical to `make_craft.py`.
+kRPC's autopilot is replaced by an attitude controller on `OnFlyByWire`: the angle
+error sets a target rate, and a PI rate loop, scaled by the available torque,
+holds the pitch command against aerodynamic torque.
+
+Build from source with Mono's `mcs`, then optionally install into a KSP folder:
 
 ```sh
-.venv/bin/python -m orbiter.mod --ksp-root "$KSP_ROOT" --project-root "$PWD" --python "$PWD/.venv/bin/python" --install
+.venv/bin/python -m orbiter.mod --ksp-root "$KSP_ROOT" --project-root "$PWD" --install
 ```
 
-Restart KSP, enter flight, and click the **Orbiter** icon on the stock sidebar.
-The game window provides destination, altitude, **Run**, **Stop**, and flight
-status. It starts the configured local engine automatically; no browser window
-is required. Keep the kRPC server running. The same matched transfer rocket,
-Mun/Minmus destinations, and 40–60 km goal limits apply.
+`--install` exports the policies (`orbiter.native_export`) and writes only
+`GameData/OrbiterAutopilot` with an install receipt. `--replace` updates a
+receipt-verified installation, keeping a backup outside `GameData`. KSP and
+Unity assemblies are referenced for compilation and never redistributed.
+`KSP -orbiter-autotest Mun 50` loads `saves/OrbiterRL/OrbiterRL-pad-transfer` and
+flies one mission unattended, writing `Logs/autotest-result.txt`; without the
+flag the addon never loads a save.
 
-A separate native-toolbar Run completed the full pad-to-Mun flight at the
-selected 50 km goal, reaching 49.35 x 54.91 km and then coasting unpowered for
-3,116.68 seconds. The first client lost its displayed job identity during that
-flight; the engine continued and passed every orbit/cleanup check. The corrected
-client uses KSP's managed JSON decoder with explicit identity/proof checks. A
-cold reload read the completed flight proof successfully. The
-[native flight recording](validation/missions/mun_native_launch.json) preserves
-the engine result separately from frontend validation.
+Two actual KSP 1.12.5 flights ran entirely in the addon, with no Python or kRPC
+process. A **50 km Mun** goal reached **49.54 x 54.77 km**, and a **60 km Minmus**
+goal reached **59.48 x 64.94 km**. Each passed four quarter-orbit probes over one
+full unpowered revolution (3,117 s and 6,388 s). The Minmus flight started from a
+fresh launch of the addon-generated craft with default crew. Its first window
+was rejected, because re-applying the best encounter trial did not reproduce
+KSP's predicted periapsis, and the next parking orbit was used. Both flights
+reached a 72 x 137 km parking orbit, against 72 x 146 km for the kRPC flight of
+the same policy. Commanded and actual pitch tracked within about 1° through the
+lower atmosphere. The [Mun](validation/missions/native_addon_mun.json) and
+[Minmus](validation/missions/native_addon_minmus.json) records link the full
+logs and policy hashes. They are individual demonstrations, not a success rate.
 
-The installer writes only `GameData/OrbiterAutopilot`: the addon DLL, runtime
-settings, and an install receipt. The engine's output goes to `backend.log` there;
-flight recordings remain under the configured project's `runs/control/`.
-Absolute interpreter/project paths are stored in `settings.cfg`; rerun the
-installer with `--replace` after moving the environment or updating the addon.
-Replacement requires a matching install receipt and preserves backups with
-extensions KSP will not load as plugins. Game assemblies are never redistributed.
-
-Closing the window leaves the flight running. Stop waits for the engine's
-control-release result; a lost connection is not reported as a successful stop.
-The backend verifies its identity and flight job before accepting a native Stop,
-and an OS ownership lock prevents overlapping Orbiter mission workers after a
-backend restart. The optional validation-save bootstrap remains a separate addon
-with its own explicit startup flag.
+The earlier Python/kRPC toolbar bridge, validated by the flights above, is kept
+as evidence in `validation/missions/ksp_bridge_frontend_0.1.cs`.
 
 ### Release package and license
 
-Package the current compiled addon with the Python source and the two validated
-live policy pairs:
+Package the compiled addon with the two validated policies:
 
 ```sh
 .venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.2.0.zip
 ```
 
-The ZIP contains `GameData/OrbiterAutopilot`, `OrbiterEngine`, `install.py`,
-installation instructions, and a manifest of file hashes. Extract the complete
-archive into a permanent directory, then run `python3 install.py --ksp-root
-"<your KSP directory>"`. The installer prepares a Python environment, downloads
-its dependencies, and configures the prebuilt DLL with your local paths. Python,
-kRPC, KSP and Unity binaries are not bundled; copying GameData alone does not
-configure the Python engine. The packager checks the live models against the
-validation manifest and excludes the experimental capture policy.
-
-Normal installation derives the exact 20-part `OrbiterRL Transfer` rocket from
-your installed stock `Orbiter One.craft` and `Science Jr.craft`, checking its
-14,310 kg wet mass and staging profile. It creates a new file at the extracted
-release's `Ships/OrbiterRL Transfer.craft`; `--craft-output` selects another new
-path. Copy that file into your save's `Ships/VAB/`, load it in the VAB, assign
-crew, and launch onto the pad. Existing craft and stock templates are never
-overwritten. Use `--skip-craft` if you already have the supported rocket or the
-stock templates are unavailable. Stock-derived craft are not bundled in the ZIP.
+The ZIP contains only `GameData/OrbiterAutopilot`: the DLL, `Policies/`,
+`README.txt`, `LICENSE` and a manifest of file hashes. The packager exports each
+policy from the checkpoint pinned in the validation manifest and rejects any
+other policy, the bridge build, game DLLs, and files containing local paths.
+Archives are deterministic and never overwrite an existing file.
 
 The new addon, Python engine and newly trained checkpoints use the
 [MIT license](LICENSE), copyright 2026 Camilo Correa Llano. Historical material

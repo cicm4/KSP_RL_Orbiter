@@ -1,0 +1,61 @@
+{
+  "id": "native_addon_mun",
+  "frontend": "self_contained_ksp_addon",
+  "runtime": "native C# inside KSP 1.12.5; no Python or kRPC",
+  "date_utc": "2026-10-21",
+  "launch": "saved launchpad vessel saves/OrbiterRL/OrbiterRL-pad-transfer (autotest)",
+  "target": "Mun",
+  "target_altitude_m": 50000,
+  "ascent_policy_sha256": "b8a172e507bb1eb50260ffa69a6ca1219d00a8ee221927dd78085b621457a416",
+  "capture_policy_sha256": "cc95cb37c229b9d4fef6fed22c7728abdfd12028439cb20724e0bb01bef56ca5",
+  "source_checkpoints": {
+    "ascent": "models/transfer_ascent_ppo.zip",
+    "capture": "models/moon_capture.zip"
+  },
+  "parking_orbit_km": [
+    72.26,
+    137.21
+  ],
+  "encounter": {
+    "predicted_periapsis_m": 50007.326638956525,
+    "verified_by": "ksp_patched_conics",
+    "node_delta_v": 809.666870925373
+  },
+  "capture_steps": 75,
+  "final_orbit_km": [
+    49.54,
+    54.774
+  ],
+  "coast_probes": [
+    {
+      "quarter": 1,
+      "periapsis": 49540.09673848568,
+      "apoapsis": 54774.33195682286,
+      "failures": []
+    },
+    {
+      "quarter": 2,
+      "periapsis": 49540.09653321808,
+      "apoapsis": 54774.33209950483,
+      "failures": []
+    },
+    {
+      "quarter": 3,
+      "periapsis": 49540.097302106326,
+      "apoapsis": 54774.33107694241,
+      "failures": []
+    },
+    {
+      "quarter": 4,
+      "periapsis": 49540.0974536335,
+      "apoapsis": 54774.33085209716,
+      "failures": []
+    }
+  ],
+  "coast_seconds": 3117.2384580996586,
+  "success": true,
+  "outcome": "Stable 49.5 x 54.8 km orbit of Mun verified for one full revolution",
+  "log": "validation/missions/native_addon_mun.jsonl.gz",
+  "log_sha256": "04260ebf1bc1f3af6bc5e9ec48385802711bb993f4de54abf17e4081bc7645d5",
+  "scope": "One actual KSP flight from the pad through a verified one-orbit coast; a demonstration, not a success rate."
+}

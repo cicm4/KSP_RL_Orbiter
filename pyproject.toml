@@ -51,7 +51,7 @@ packages = ["orbiter"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-orbiter = ["configs/*.json", "data/*.json", "control.html", "ksp_bootstrap.cs", "ksp_autopilot.cs"]
+orbiter = ["configs/*.json", "data/*.json", "control.html", "ksp_bootstrap.cs", "native/Core/*.cs", "native/Ksp/*.cs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
