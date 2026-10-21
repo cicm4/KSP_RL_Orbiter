@@ -133,7 +133,7 @@ Package the current compiled addon with the Python source and the two validated
 live policy pairs:
 
 ```sh
-.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.1.0.zip
+.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.2.0.zip
 ```
 
 The ZIP contains `GameData/OrbiterAutopilot`, `OrbiterEngine`, `install.py`,
@@ -692,6 +692,13 @@ Version 2 of this benchmark (the default) changes the training recipe:
   body), add apse/plane errors in tolerance units, and add logarithmic
   tolerance-unit shaping so Sun cases are no longer effectively sparse.
 - Validation banks default to 544 cases; minibatches are reshuffled each epoch.
+
+The completed 1b04fee v2 campaign (seeds 901-903, fresh test banks, simulator only)
+beat its paired v1 run in 13 of 15 jobs. Ascent tests passed 486-497/512 for GRU,
+LSTM and Transformer, against 487/512 for the teacher, but only 71-484/512 for the
+MLPs. Orbital tests passed 370-401/544 for the history policies and MLP-256,
+against 474/544 for the teacher; MLP-512 and MLP-1024 passed 252-333/544. One
+context-64 orbital Transformer stopped at the campaign deadline before testing.
 
 Opt-in follow-ups target the remaining gaps. In the v2 campaign, the shared orbital
 policies solved 0/32 Sun and Jool test cases that the analytic teacher solved 32/32
