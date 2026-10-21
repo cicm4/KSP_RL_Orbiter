@@ -16,6 +16,7 @@ import torch
 
 from .capture_env import CaptureConfig
 from .system import SystemCatalog
+from .tensor_memo import TensorMemo
 
 TASK = "stock_all_body_batched_orbital_v1"
 OBSERVATIONS = 32
@@ -42,6 +43,7 @@ class BatchedCapture:
         self.version = version
         self.task, self.observations = VERSIONS[version]
         self.count, self.device, self.dtype = count, torch.device(device), torch.float64
+        self._telemetry_memo, self._observation_memo = TensorMemo(), TensorMemo()
         self.generator = torch.Generator(device=self.device).manual_seed(seed)
         self.catalog = SystemCatalog.load()
         self.names = tuple(sorted(bodies or self.catalog.bodies))
@@ -140,7 +142,20 @@ class BatchedCapture:
         self.previous_potential[ids] = self.potential()[ids]
         return self.observation()
 
+    # Every tensor attribute read by _telemetry/_observation. Exactness of the
+    # memo depends on these lists; tests audit them by recording attribute use.
+    TELEMETRY_INPUTS = ("r", "v", "mu", "goal_normal", "safe", "goal", "tolerance",
+                        "thrust", "mass", "dry_mass")
+    OBSERVATION_INPUTS = TELEMETRY_INPUTS + (
+        "direction", "initial_mass", "isp", "V", "T", "radius", "soi", "time",
+        "max_time", "control_dt")
+
     def telemetry(self):
+        """Osculating-orbit telemetry, memoized exactly on the current state."""
+        return self._telemetry_memo.get(
+            [getattr(self, name) for name in self.TELEMETRY_INPUTS], (), self._telemetry)
+
+    def _telemetry(self):
         rmag = self.r.norm(dim=-1)
         radial = self.r/rmag[:, None]
         h = torch.linalg.cross(self.r, self.v)
@@ -165,6 +180,16 @@ class BatchedCapture:
                     plane=plane, cosine=cosine, in_band=in_band, authority=authority)
 
     def observation(self):
+        """Float32 policy observation, memoized exactly on the current state.
+
+        Each call returns the same tensor object while the state is unchanged;
+        consumers copy it (History) and must not modify it in place.
+        """
+        return self._observation_memo.get(
+            [getattr(self, name) for name in self.OBSERVATION_INPUTS], (self.version,),
+            self._observation)
+
+    def _observation(self):
         d = self.telemetry()
         local_normal = torch.bmm(d['basis'].transpose(1, 2), self.goal_normal[:, :, None]).squeeze(-1)
         local_direction = torch.bmm(d['basis'].transpose(1, 2), self.direction[:, :, None]).squeeze(-1)
@@ -226,9 +251,14 @@ class BatchedCapture:
         return torch.where(d['in_band'][:, None], 0, action).float()
 
     def derivative(self, state, mass, force):
+        return self._derivative(state, -self.mu[:, None], force/mass[:, None])
+
+    @staticmethod
+    def _derivative(state, negative_mu, acceleration):
+        # Same operation order as derivative(); the two state-independent
+        # factors are hoisted out of the four RK4 stages by step().
         r, v = state[:, :3], state[:, 3:]
-        return torch.cat((v, -self.mu[:, None]*r/r.norm(dim=-1)[:, None].pow(3)
-                          +force/mass[:, None]), -1)
+        return torch.cat((v, negative_mu*r/r.norm(dim=-1)[:, None].pow(3)+acceleration), -1)
 
     @torch.no_grad()
     def step(self, action, active=None):
@@ -243,9 +273,17 @@ class BatchedCapture:
         remaining = torch.minimum(self.control_dt, (self.max_time-self.time).clamp(min=0))
         reason = torch.zeros(self.count, device=self.device, dtype=torch.long)
         initial_mass = self.mass.clone()
+        # Quantities fixed for the whole control interval are evaluated once;
+        # each is the identical expression the substep previously recomputed.
+        commanded_thrust = throttle*self.thrust
+        burn_rate = commanded_thrust/(self.isp*G0)
+        fuel_floor = self.dry_mass+1e-9
+        throttling = throttle > 0
+        negative_mu = -self.mu[:, None]
+        axes = torch.arange(3, device=self.device)
         for _ in range(8):
             continuing = active & (reason == 0) & (remaining > 1e-10)
-            mdot = torch.where(self.mass > self.dry_mass+1e-9, throttle*self.thrust/(self.isp*G0), 0)
+            mdot = torch.where(self.mass > fuel_floor, burn_rate, 0)
             dt = torch.minimum(self.physics_dt, remaining)
             dt = torch.where(mdot > 0, torch.minimum(dt, (self.mass-self.dry_mass)/mdot.clamp(min=1e-30)), dt)
             dt = torch.where(continuing, dt, 0)
@@ -253,21 +291,24 @@ class BatchedCapture:
             angle = dot.acos()
             turn = torch.minimum(angle, self.pointing_rate*dt)
             axis = torch.linalg.cross(self.direction, target)
-            fallback = torch.nn.functional.one_hot(self.direction.abs().argmin(-1), 3).to(self.dtype)
+            # Exact one-hot of the least-aligned axis; F.one_hot would add two
+            # host-synchronizing range checks on CPU devices.
+            fallback = (self.direction.abs().argmin(-1)[:, None] == axes).to(self.dtype)
             axis = torch.where((axis.norm(dim=-1) < 1e-10)[:, None],
                                torch.linalg.cross(self.direction, fallback), axis)
             rotated = (turn.cos()[:, None]*self.direction
                        +turn.sin()[:, None]*torch.linalg.cross(unit(axis), self.direction))
             desired = torch.where((angle < 1e-10)[:, None], target, unit(rotated))
-            self.direction = torch.where(((throttle > 0)&continuing)[:, None], desired, self.direction)
-            force = torch.where((mdot > 0)[:, None], (throttle*self.thrust)[:, None]*self.direction, 0)
+            self.direction = torch.where((throttling&continuing)[:, None], desired, self.direction)
+            force = torch.where((mdot > 0)[:, None], commanded_thrust[:, None]*self.direction, 0)
             mass = torch.maximum(self.dry_mass, self.mass-.5*mdot*dt)
-            z = torch.cat((self.r, self.v), -1); half = dt[:, None]/2
-            k1 = self.derivative(z, mass, force)
-            k2 = self.derivative(z+half*k1, mass, force)
-            k3 = self.derivative(z+half*k2, mass, force)
-            k4 = self.derivative(z+dt[:, None]*k3, mass, force)
-            z += dt[:, None]*(k1+2*k2+2*k3+k4)/6
+            acceleration = force/mass[:, None]
+            z = torch.cat((self.r, self.v), -1); step_dt = dt[:, None]; half = step_dt/2
+            k1 = self._derivative(z, negative_mu, acceleration)
+            k2 = self._derivative(z+half*k1, negative_mu, acceleration)
+            k3 = self._derivative(z+half*k2, negative_mu, acceleration)
+            k4 = self._derivative(z+step_dt*k3, negative_mu, acceleration)
+            z += step_dt*(k1+2*k2+2*k3+k4)/6
             self.r, self.v = z[:, :3], z[:, 3:]
             self.mass = torch.maximum(self.dry_mass, self.mass-mdot*dt)
             self.time += dt; remaining = (remaining-dt).clamp(min=0)

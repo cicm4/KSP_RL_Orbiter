@@ -225,9 +225,12 @@ def fit_teacher(model, task, parent, args, log):
         check_stop()
         with torch.no_grad():
             action=parent(env.observation()) if parent is not None else env.teacher()
-            observations.append(history.data.clone());labels.append(action)
+            # History.append returns a fresh window and never writes into an
+            # earlier one, so the stored window needs no defensive clone.
+            observations.append(history.data);labels.append(action)
             obs,_,done,_=env.step(action)
-            env.reset(done);obs=env.observation()
+            # reset() returns exactly env.observation() of the post-reset state.
+            obs=env.reset(done)
             history.append(obs,action,done)
     x=torch.cat(observations);y=model.squashed_target(torch.cat(labels))
     fingerprint=hashlib.sha256(x.detach().cpu().numpy().tobytes()).hexdigest()
@@ -259,6 +262,45 @@ def anchor_coefficient(args, update):
     return args.bc_coef*(1-(update-1)/max(1,args.bc_decay_updates))
 
 
+@torch.no_grad()
+def collect_rollout(model, env, history, args):
+    """One on-policy rollout of ``args.horizon`` steps plus GAE targets.
+
+    Returns ``((histories, latents, log_probs, advantages, targets), stats)``.
+    Host synchronization happens once, after the loop: episode/success
+    counts accumulate on the device instead of ``int(...)`` every step.
+    Stored history windows are not cloned because ``History.append`` always
+    builds a new window, and reset() already returns the post-reset
+    observation, so it is not rebuilt. Values equal the historical loop.
+    """
+    xs=[];zs=[];lps=[];values=[];rewards=[];dones=[]
+    successes=torch.zeros((),dtype=torch.long,device=args.device);episodes=torch.zeros_like(successes)
+    for _ in range(args.horizon):
+        check_stop();x=history.data;xs.append(x)
+        action,z,lp=model.sample(x);value=model.critic(x).squeeze(-1)
+        _,reward,done,info=env.step(action)
+        zs.append(z);lps.append(lp);values.append(value);rewards.append(reward);dones.append(done)
+        successes+=info['success'].sum();episodes+=done.sum()
+        history.append(env.reset(done),action,done)
+    next_value=model.critic(history.data).squeeze(-1)
+    # Per-step factors evaluated in two batched ops; the scan itself keeps the
+    # historical expression order exactly.
+    alive=(~torch.stack(dones)).float();carry=.999*.95*alive
+    advantage=torch.zeros(args.worlds,device=args.device);advantages=[];returns=[]
+    for t in reversed(range(args.horizon)):
+        delta=rewards[t]+.999*next_value*alive[t]-values[t]
+        advantage=delta+carry[t]*advantage
+        advantages.append(advantage);returns.append(advantage+values[t]);next_value=values[t]
+    advantages=torch.stack(advantages[::-1]).flatten()
+    advantages=(advantages-advantages.mean())/(advantages.std()+1e-8)
+    targets=torch.stack(returns[::-1]).flatten()
+    latent_all=torch.cat(zs)
+    stats=dict(successes=int(successes),episodes=int(episodes),
+               latent_saturation=float((latent_all.tanh().abs()>.99).float().mean()),
+               explained_variance=1-float((targets-torch.cat(values)).var()/(targets.var()+1e-8)))
+    return (torch.cat(xs),latent_all,torch.cat(lps),advantages,targets),stats
+
+
 def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=None,
                anchor_coef=0., train_actor=True):
     histories,latents,old_logp,advantages,returns=data
@@ -269,11 +311,18 @@ def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=N
             x=histories[indices];latent=latents[indices];target=returns[indices]
             dist=model.distribution(x);logp=model.log_probability(dist,latent)
             log_ratio=logp-old_logp[indices]
-            kl=(log_ratio.exp()-1-log_ratio).mean()
+            ratio=log_ratio.exp()
+            kl=(ratio-1-log_ratio).mean()
+            # Enqueue the RNG-free, state-free work of this minibatch before
+            # the KL check's host sync so a GPU overlaps it with the wait. The
+            # critic forward is independent of the actor step that precedes
+            # its optimizer step. Every RNG draw (rsample, anchor indices) and
+            # every parameter update still happens only after the check.
+            adv=advantages[indices]
+            policy_loss=-torch.minimum(ratio*adv,ratio.clamp(.8,1.2)*adv).mean()
+            value_loss=(model.critic(x).squeeze(-1)-target).square().mean()
             last_kl=float(kl.detach())
             if last_kl>args.target_kl:stopped=True;break
-            ratio=(logp-old_logp[indices]).exp();adv=advantages[indices]
-            policy_loss=-torch.minimum(ratio*adv,ratio.clamp(.8,1.2)*adv).mean()
             sample=dist.rsample();entropy=-model.log_probability(dist,sample).mean()
             actor_loss=policy_loss-args.entropy*entropy
             if anchor is not None and anchor_coef>0:
@@ -284,7 +333,6 @@ def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=N
             actor_optimizer.zero_grad();actor_loss.backward()
             torch.nn.utils.clip_grad_norm_([*model.actor.parameters(),model.log_std],.5)
             actor_optimizer.step();actor_steps+=1
-            value_loss=(model.critic(x).squeeze(-1)-target).square().mean()
             critic_optimizer.zero_grad();value_loss.backward();torch.nn.utils.clip_grad_norm_(model.critic.parameters(),.5)
             critic_optimizer.step();critic_steps+=1
         if stopped:break
@@ -385,29 +433,11 @@ def train(args):
         # Negative updates fit only the fresh critic to the imitation actor's
         # returns; the actor and its selection ancestry are unchanged.
         for update in range(1-args.critic_warmup,args.updates+1):
-            check_stop();tick=time.monotonic();xs=[];zs=[];lps=[];values=[];rewards=[];dones=[]
-            rollout_successes=rollout_episodes=0
-            with torch.no_grad():
-                for _ in range(args.horizon):
-                    check_stop();xs.append(history.data.clone())
-                    action,z,lp=model.sample(history.data);value=model.critic(history.data).squeeze(-1)
-                    _,reward,done,info=env.step(action)
-                    zs.append(z);lps.append(lp);values.append(value);rewards.append(reward);dones.append(done)
-                    rollout_successes+=int(info['success'].sum());rollout_episodes+=int(done.sum())
-                    env.reset(done);history.append(env.observation(),action,done)
-                next_value=model.critic(history.data).squeeze(-1)
-                advantage=torch.zeros(args.worlds,device=args.device);advantages=[];returns=[]
-                for t in reversed(range(args.horizon)):
-                    alive=(~dones[t]).float();delta=rewards[t]+.999*next_value*alive-values[t]
-                    advantage=delta+.999*.95*alive*advantage
-                    advantages.append(advantage);returns.append(advantage+values[t]);next_value=values[t]
-                advantages=torch.stack(advantages[::-1]).flatten()
-                advantages=(advantages-advantages.mean())/(advantages.std()+1e-8)
-                targets=torch.stack(returns[::-1]).flatten()
-                latent_all=torch.cat(zs)
-                saturation=float((latent_all.tanh().abs()>.99).float().mean())
-                explained=1-float((targets-torch.cat(values)).var()/(targets.var()+1e-8))
-            stats=ppo_update(model,(torch.cat(xs),latent_all,torch.cat(lps),advantages,targets),
+            check_stop();tick=time.monotonic()
+            data,rollout=collect_rollout(model,env,history,args)
+            rollout_successes,rollout_episodes=rollout['successes'],rollout['episodes']
+            saturation,explained=rollout['latent_saturation'],rollout['explained_variance']
+            stats=ppo_update(model,data,
                              actor_optimizer,critic_optimizer,args,anchor=anchor,
                              anchor_coef=anchor_coefficient(args,update) if update>0 else 0.,
                              train_actor=update>0)

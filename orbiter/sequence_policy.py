@@ -15,24 +15,49 @@ ARCHITECTURES = ("mlp256", "mlp512", "mlp1024", "gru", "lstm", "transformer")
 
 
 class History:
+    """Trailing [worlds, length, observation+action+valid] window.
+
+    ``append`` builds a *new* contiguous window each step and never writes
+    into one it returned earlier, so callers may keep previous ``data``
+    tensors (the PPO rollout stores them without cloning). The values are
+    identical to the historical in-place shift: reset rows are zeroed, the
+    window moves one token left and the newest token holds the observation,
+    the executed previous action (zero after a reset) and a valid flag.
+    No boolean-mask indexing is used, so a reset causes no host sync.
+    """
+
     def __init__(self, count, length, observations, actions, device):
         self.observations, self.actions = observations, actions
         self.data = torch.zeros(count, length, observations + actions + 1, device=device)
 
     @torch.no_grad()
     def append(self, observation, previous_action=None, reset=None):
-        if observation.shape != (self.data.shape[0], self.observations):
+        data = self.data
+        if observation.shape != (data.shape[0], self.observations):
             raise ValueError("history observation shape mismatch")
+        count = data.shape[0]
+        if previous_action is None:
+            action = data.new_zeros(count, self.actions)
+        else:
+            action = torch.as_tensor(previous_action).to(
+                device=data.device, dtype=data.dtype).expand(count, self.actions)
+        valid = data.new_ones(count, 1)
+        token = torch.cat((observation.to(device=data.device, dtype=data.dtype), action, valid), -1)
         if reset is not None:
-            self.data[reset] = 0
-        self.data[:, :-1] = self.data[:, 1:].clone()
-        self.data[:, -1] = 0
-        self.data[:, -1, :self.observations] = observation
-        if previous_action is not None:
-            self.data[:, -1, self.observations:-1] = previous_action
-            if reset is not None:
-                self.data[reset, -1, self.observations:-1] = 0
-        self.data[:, -1, -1] = 1
+            reset = torch.as_tensor(reset, device=data.device)
+            if reset.dtype != torch.bool:
+                # Integer world indices, as accepted by the historical
+                # ``data[reset] = 0`` assignment.
+                indices, reset = reset, torch.zeros(count, dtype=torch.bool, device=data.device)
+                reset[indices] = True
+            if reset.shape != (count,):
+                raise ValueError("history reset mask shape mismatch")
+            # Only the executed-action slots are cleared in the new token.
+            token[:, self.observations:-1].masked_fill_(reset[:, None], 0)
+        older = data[:, 1:]
+        if reset is not None:
+            older = older.masked_fill(reset[:, None, None], 0)
+        self.data = torch.cat((older, token[:, None]), 1)
         return self.data
 
 

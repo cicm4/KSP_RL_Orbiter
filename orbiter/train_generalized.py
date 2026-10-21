@@ -780,6 +780,16 @@ def ppo_train(
                 maximum_kl = torch.maximum(maximum_kl, approximate_kl)
                 total_clipped += ((ratio - 1).abs() > 0.2).float().mean().detach()
                 checked_batches += 1
+                # RNG-free, state-free losses are enqueued before the KL
+                # check's host sync so a GPU overlaps them with the wait. The
+                # entropy sample (RNG) and every update remain after it.
+                actor_loss = -torch.minimum(
+                    ratio * advantage[selected],
+                    ratio.clamp(0.8, 1.2) * advantage[selected],
+                ).mean()
+                value = model.critic(flat["obs"][selected]).squeeze(-1)
+                value_loss = nn.functional.mse_loss(value, returns[selected])
+                loss = actor_loss + 0.5 * value_loss
                 # Check before applying another optimizer step. Waiting for a
                 # complete epoch permits 64 updates at the production batch size
                 # and allowed the higher-rate pilot to overshoot substantially.
@@ -792,13 +802,6 @@ def ppo_train(
                     if measured_kl > target_kl:
                         early_stopped = True
                         break
-                actor_loss = -torch.minimum(
-                    ratio * advantage[selected],
-                    ratio.clamp(0.8, 1.2) * advantage[selected],
-                ).mean()
-                value = model.critic(flat["obs"][selected]).squeeze(-1)
-                value_loss = nn.functional.mse_loss(value, returns[selected])
-                loss = actor_loss + 0.5 * value_loss
                 entropy = None
                 if entropy_coefficient:
                     entropy = squashed_normal_entropy(distribution)
