@@ -110,17 +110,18 @@ class BatchedAeroAscent(BatchedAscent):
         self.drag_alpha_area = self.lift_area = None
         super().__init__(count, envelope=envelope or AeroVehicleEnvelope(), **kwargs)
 
-    @torch.no_grad()
-    def reset(self, mask=None):
+    OBSERVATION_INPUTS = BatchedAscent.OBSERVATION_INPUTS + ("drag_alpha_area", "lift_area")
+
+    def _reset_worlds(self, mask):
+        # Same draw order as the historical reset(): the parent's craft draws
+        # (including any rejected-craft resampling through this method), then
+        # both coefficients for every selected world.
         if self.drag_alpha_area is None:
             self.drag_alpha_area, self.lift_area = (
                 self.zeros(self.count),
                 self.zeros(self.count),
             )
-        if mask is None:
-            mask = torch.ones(self.count, dtype=torch.bool, device=self.device)
-        super().reset(mask)
-        selected = self.ids[mask]
+        selected = super()._reset_worlds(mask)
         n = selected.numel()
         if n:
             for name in ("drag_alpha_area", "lift_area"):
@@ -139,33 +140,24 @@ class BatchedAeroAscent(BatchedAscent):
                 getattr(self, name)[selected] = (
                     self.initial_mass[selected] / 1000 * coefficient
                 )
-        return self.observation()
+        return selected
 
-    def observation(self):
+    def _observation(self):
         aero = torch.stack((self.drag_alpha_area, self.lift_area), -1)
         aero = (aero / self.initial_mass[:, None] * 1000).clamp(-10, 10).float()
-        return torch.cat((super().observation(), aero), -1)
+        return torch.cat((super()._observation(), aero), -1)
 
-    def derivative(self, state, mass, pitch, thrust):
+    def _extra_acceleration(self, *, ux, uy, avx, avy, speed, half_rho, mass, pitch_radians):
         # Preserve the parent's gravity, constant drag and thrust exactly; add
         # only the two force terms also present in the independent scalar model.
-        derivative = super().derivative(state, mass, pitch, thrust)
-        x, y, vx, vy = state.unbind(-1)
-        radius = torch.hypot(x, y)
-        ux, uy = x / radius, y / radius
-        omega = 2 * math.pi / self.rotation_period
-        avx, avy = vx + omega * y, vy - omega * x
-        speed = torch.hypot(avx, avy)
+        # Geometry, density and air speed are shared with the parent terms.
         radial_speed, east_speed = avx * ux + avy * uy, -avx * uy + avy * ux
-        alpha = pitch * math.pi / 180 - torch.atan2(radial_speed, east_speed)
-        rho = self.atmosphere_at(radius - self.radius)[:, 0]
-        pressure_over_speed_mass = 0.5 * rho * speed / mass
+        alpha = pitch_radians - torch.atan2(radial_speed, east_speed)
+        pressure_over_speed_mass = half_rho * speed / mass
         drag = pressure_over_speed_mass * self.drag_alpha_area * alpha.sin().square()
         lift = pressure_over_speed_mass * self.lift_area * (2 * alpha).sin()
-        correction = torch.stack(
-            (-drag * avx + lift * avy, -drag * avy - lift * avx), -1
-        )
-        return torch.cat((derivative[:, :2], derivative[:, 2:] + correction), -1)
+        negative_drag = -drag
+        return negative_drag * avx + lift * avy, negative_drag * avy - lift * avx
 
     def export_config(self, index):
         """Freeze every physical parameter, including a loaded atmosphere."""
@@ -294,6 +286,10 @@ class BatchedAeroAscent(BatchedAscent):
         self.throttle.zero_()
         self.time.zero_()
         self.episode_return.zero_()
+        self.episode_task_return.zero_()
+        self.discounted_task_return.zero_()
+        self.episode_discount.fill_(1)
+        self.steps.zero_()
         upper = self.payload.clone()
         self.ideal_delta_v.zero_()
         for stage in reversed(range(MAX_STAGES)):

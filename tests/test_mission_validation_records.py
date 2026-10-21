@@ -349,7 +349,7 @@ def test_native_run_is_a_distinct_actual_launch():
     assert frontend["job_id"] == native_job
     assert frontend["frontend"] == native["frontend"]
     assert frontend["cold_reload_source_sha256"] == hashlib.sha256(
-        (ROOT / "orbiter/ksp_autopilot.cs").read_bytes()
+        (ROOT / "validation/missions/ksp_bridge_frontend_0.1.cs").read_bytes()
     ).hexdigest()
     assert frontend["launch_dll_sha256"] != frontend["cold_reload_dll_sha256"]
     assert any(

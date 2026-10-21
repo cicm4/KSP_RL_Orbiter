@@ -1,11 +1,12 @@
 # KSP RL Orbiter
 
-Accelerated orbital-launch training with a headless Gymnasium simulator and
-an external kRPC autopilot for Kerbal Space Program. Train without running the
-game, calibrate against actual flight measurements, then validate the learned
-controller in KSP. A stock-toolbar KSP addon provides the in-game controls and
-starts the local Python flight engine. Training and policy execution stay in
-Python, connected to the game through kRPC.
+Accelerated orbital-launch training with a headless Gymnasium simulator, and a
+self-contained Kerbal Space Program addon that flies the learned policies inside
+the game. Train without running the game, calibrate against actual flight
+measurements, then fly the released policies with the **Orbiter Autopilot**
+addon: extract it into KSP's folder and press Run. The addon needs no Python,
+no kRPC and no setup. Training, research and the original kRPC tooling stay in
+Python.
 
 Three included ascent checkpoints have completed actual staged KSP launches:
 
@@ -57,8 +58,9 @@ Installed commands include `orbiter-train`, `orbiter-live`, `orbiter-validate`,
 `orbiter-train-capture`, `orbiter-mission`, `orbiter-control`, `orbiter-mod` and `orbiter-bootstrap`.
 The `python -m orbiter.<module>` forms also work.
 
-To fly through a control panel, place the **OrbiterRL Transfer** rocket on Kerbin's
-launchpad and start the kRPC server in KSP. Open
+Players should use the [self-contained addon](#ksp-addon-no-setup). For research,
+the original Python controller can also fly through kRPC: place the **OrbiterRL
+Transfer** rocket on Kerbin's launchpad and start the kRPC server in KSP. Open
 [Start Autopilot.command](<Start Autopilot.command>) on macOS, or run:
 
 ```sh
@@ -88,71 +90,79 @@ KSP encounter verification. A fresh launchpad Run then passed. The
 button flights, that failed attempt, the diagnostic, requests and final results.
 These individual demonstrations do not establish a repeated-flight success rate.
 
-### KSP toolbar addon
+### KSP addon (no setup)
 
-With the Python environment above, the Mono C# compiler (`mcs`), and kRPC
-installed in KSP, build and install against your own game assemblies:
+The **Orbiter Autopilot** addon runs the whole mission inside KSP 1.12: the
+learned ascent with staging, a Lambert transfer plan verified against KSP's own
+patched conics, the node burns, the learned capture and a one-orbit coast check.
+The two released policies are small tanh networks evaluated in C#; there is no
+Python, kRPC, network port or external process at runtime.
+
+To play: extract the release ZIP into the KSP folder so that
+`GameData/OrbiterAutopilot` sits beside `GameData/Squad`, and start KSP. On first
+start the addon builds **OrbiterRL Transfer** in `Ships/VAB` from your own stock
+`Orbiter One` and `Science Jr` craft (existing files are never overwritten, and no
+stock-derived craft is distributed). Launch it onto the pad, click **Orbiter** in
+the flight toolbar, choose **Mun** or **Minmus** and a **40–60 km** orbit, and
+press **Run**. **Stop** releases throttle and steering immediately. A preflight
+check refuses other craft, a moved stage plan, or a missing maneuver-node
+capability (Career needs upgraded Tracking Station or Mission Control). Each
+flight is logged as JSON lines in `GameData/OrbiterAutopilot/Logs`.
+
+The addon source is in `orbiter/native`: `Core/` holds the Unity-free policy,
+observation, orbital-mechanics, planner and craft-builder ports, and `Ksp/` the
+telemetry, attitude controller, mission runner and toolbar UI.
+`tests/test_native_core.py` compiles the core with Mono and checks it against the
+Python on the same inputs: the policies match SB3 `predict` within 2e-6, the
+ascent observation is bit-identical, and the transfer planner, Kepler and Lambert
+solvers match to 1e-8. The generated craft is byte-identical to `make_craft.py`.
+kRPC's autopilot is replaced by an attitude controller on `OnFlyByWire`: the angle
+error sets a target rate, and a PI rate loop, scaled by the available torque,
+holds the pitch command against aerodynamic torque.
+
+Build from source with Mono's `mcs`, then optionally install into a KSP folder:
 
 ```sh
-.venv/bin/python -m orbiter.mod --ksp-root "$KSP_ROOT" --project-root "$PWD" --python "$PWD/.venv/bin/python" --install
+.venv/bin/python -m orbiter.mod --ksp-root "$KSP_ROOT" --project-root "$PWD" --install
 ```
 
-Restart KSP, enter flight, and click the **Orbiter** icon on the stock sidebar.
-The game window provides destination, altitude, **Run**, **Stop**, and flight
-status. It starts the configured local engine automatically; no browser window
-is required. Keep the kRPC server running. The same matched transfer rocket,
-Mun/Minmus destinations, and 40–60 km goal limits apply.
+`--install` exports the policies (`orbiter.native_export`) and writes only
+`GameData/OrbiterAutopilot` with an install receipt. `--replace` updates a
+receipt-verified installation, keeping a backup outside `GameData`. KSP and
+Unity assemblies are referenced for compilation and never redistributed.
+`KSP -orbiter-autotest Mun 50` loads `saves/OrbiterRL/OrbiterRL-pad-transfer` and
+flies one mission unattended, writing `Logs/autotest-result.txt`; without the
+flag the addon never loads a save.
 
-A separate native-toolbar Run completed the full pad-to-Mun flight at the
-selected 50 km goal, reaching 49.35 x 54.91 km and then coasting unpowered for
-3,116.68 seconds. The first client lost its displayed job identity during that
-flight; the engine continued and passed every orbit/cleanup check. The corrected
-client uses KSP's managed JSON decoder with explicit identity/proof checks. A
-cold reload read the completed flight proof successfully. The
-[native flight recording](validation/missions/mun_native_launch.json) preserves
-the engine result separately from frontend validation.
+Two actual KSP 1.12.5 flights ran entirely in the addon, with no Python or kRPC
+process. A **50 km Mun** goal reached **49.54 x 54.77 km**, and a **60 km Minmus**
+goal reached **59.48 x 64.94 km**. Each passed four quarter-orbit probes over one
+full unpowered revolution (3,117 s and 6,388 s). The Minmus flight started from a
+fresh launch of the addon-generated craft with default crew. Its first window
+was rejected, because re-applying the best encounter trial did not reproduce
+KSP's predicted periapsis, and the next parking orbit was used. Both flights
+reached a 72 x 137 km parking orbit, against 72 x 146 km for the kRPC flight of
+the same policy. Commanded and actual pitch tracked within about 1° through the
+lower atmosphere. The [Mun](validation/missions/native_addon_mun.json) and
+[Minmus](validation/missions/native_addon_minmus.json) records link the full
+logs and policy hashes. They are individual demonstrations, not a success rate.
 
-The installer writes only `GameData/OrbiterAutopilot`: the addon DLL, runtime
-settings, and an install receipt. The engine's output goes to `backend.log` there;
-flight recordings remain under the configured project's `runs/control/`.
-Absolute interpreter/project paths are stored in `settings.cfg`; rerun the
-installer with `--replace` after moving the environment or updating the addon.
-Replacement requires a matching install receipt and preserves backups with
-extensions KSP will not load as plugins. Game assemblies are never redistributed.
-
-Closing the window leaves the flight running. Stop waits for the engine's
-control-release result; a lost connection is not reported as a successful stop.
-The backend verifies its identity and flight job before accepting a native Stop,
-and an OS ownership lock prevents overlapping Orbiter mission workers after a
-backend restart. The optional validation-save bootstrap remains a separate addon
-with its own explicit startup flag.
+The earlier Python/kRPC toolbar bridge, validated by the flights above, is kept
+as evidence in `validation/missions/ksp_bridge_frontend_0.1.cs`.
 
 ### Release package and license
 
-Package the current compiled addon with the Python source and the two validated
-live policy pairs:
+Package the compiled addon with the two validated policies:
 
 ```sh
-.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.1.0.zip
+.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.2.0.zip
 ```
 
-The ZIP contains `GameData/OrbiterAutopilot`, `OrbiterEngine`, `install.py`,
-installation instructions, and a manifest of file hashes. Extract the complete
-archive into a permanent directory, then run `python3 install.py --ksp-root
-"<your KSP directory>"`. The installer prepares a Python environment, downloads
-its dependencies, and configures the prebuilt DLL with your local paths. Python,
-kRPC, KSP and Unity binaries are not bundled; copying GameData alone does not
-configure the Python engine. The packager checks the live models against the
-validation manifest and excludes the experimental capture policy.
-
-Normal installation derives the exact 20-part `OrbiterRL Transfer` rocket from
-your installed stock `Orbiter One.craft` and `Science Jr.craft`, checking its
-14,310 kg wet mass and staging profile. It creates a new file at the extracted
-release's `Ships/OrbiterRL Transfer.craft`; `--craft-output` selects another new
-path. Copy that file into your save's `Ships/VAB/`, load it in the VAB, assign
-crew, and launch onto the pad. Existing craft and stock templates are never
-overwritten. Use `--skip-craft` if you already have the supported rocket or the
-stock templates are unavailable. Stock-derived craft are not bundled in the ZIP.
+The ZIP contains only `GameData/OrbiterAutopilot`: the DLL, `Policies/`,
+`README.txt`, `LICENSE` and a manifest of file hashes. The packager exports each
+policy from the checkpoint pinned in the validation manifest and rejects any
+other policy, the bridge build, game DLLs, and files containing local paths.
+Archives are deterministic and never overwrite an existing file.
 
 The new addon, Python engine and newly trained checkpoints use the
 [MIT license](LICENSE), copyright 2026 Camilo Correa Llano. Historical material
@@ -221,7 +231,105 @@ optimization epochs; the KL limit is checked before each optimizer step and
 can stop the remaining minibatches.
 Validation frequency is configurable so evaluation need not dominate training.
 
-This is an ascent curriculum for feasible sequential liquid rockets, with
+To compare deadline objectives, run the finite three-arm, three-seed suite on
+two available GPUs:
+
+```sh
+.venv/bin/python -m orbiter.ablation_suite --run-root runs/deadline-ablation --actor-from runs/generalized-stock/best.pt --parent-sha256 YOUR_VERIFIED_PARENT_SHA256 --gpus 0 1
+```
+
+Replace the hash with the verified parent checkpoint's SHA256. The suite compares
+the original time-limit bootstrap, a terminal deadline with zero timeout reward,
+and a terminal deadline with a -30 failure reward. All retain the existing time
+cost. Every arm copies the same actor into a fresh, identically seeded critic;
+validation and comparison craft seeds are separate from training seeds. Defaults
+run 100 PPO updates for each of nine jobs, with one child per GPU. Parent/source
+hashes are checked before each launch. A failed child stops the queue; SIGTERM
+allows checkpointing before bounded termination. Use a new empty output root.
+`--plan-only` writes the commands without starting training.
+
+Finite deadlines use explicit v5 objective contracts. Original v3/v4 defaults
+remain unchanged. `--actor-from` is an intentional actor-only initialization,
+whereas `--warm-start` requires a matching complete contract. PPO diagnostics
+include separate actor/critic gradient norms, value explained variance, TD
+errors, action saturation and cumulative optimizer steps. The suite's paired
+comparison report is research evidence, not release qualification or permission
+to install experimental weights.
+
+The independent shooting teacher searches bounded ascent, coast and
+circularization feedback parameters using the complete remaining stage stack:
+
+```sh
+.venv/bin/python -m orbiter.ascent_planner --help
+```
+
+Its benchmark compares the planner and existing heuristic on the same frozen
+craft. Successful witnesses are replayed in the scalar simulator and coasted
+unpowered for a full orbital period. A failed search leaves reachability unknown.
+The planner is experimental and does not control the game.
+
+To compare feedforward and recurrent residual students, generate disjoint teacher
+banks and run the separate imitation experiment:
+
+```sh
+.venv/bin/python -m orbiter.ascent_planner --count 64 --seed 920 --population 16 --iterations 3 --max-dynamic-pressure 60000 --output runs/teacher-train.json
+.venv/bin/python -m orbiter.ascent_planner --count 16 --seed 921 --population 16 --iterations 3 --max-dynamic-pressure 60000 --output runs/teacher-validation.json
+.venv/bin/python -m orbiter.distill_ascent --train-report runs/teacher-train.json --validation-report runs/teacher-validation.json --run-dir runs/student-comparison --epochs 40
+```
+
+Only freshly scalar-qualified teacher trajectories become labels. Physical craft
+identities must differ between banks. Both students augment the same fixed
+stage-aware feedback controller, without optimized per-craft parameters at
+inference. The GRU trains on ordered sequences and resets its state per craft.
+Validation action error selects the epoch; closed-loop validation includes every
+validation craft and requires scalar replay, pressure compliance and a full
+unpowered orbit. Lower imitation error alone does not establish flight
+reliability. Previous actions are teacher-forced during training, so exposure
+bias remains; final unseen tests and actual KSP flights are still required.
+These checkpoints have a separate experimental contract and no live adapter.
+
+For current-state teacher imitation, `orbiter.train_dagger_student` compares
+feedforward or recurrent residual students with recent on-policy data or bounded
+DAgger aggregation. It queries each craft's feedback teacher at visited states,
+records the actions actually executed, and retains the initial controller as a
+validation candidate. `--test-report` adds a physically disjoint final comparison
+bank that never selects weights. Initial teacher launch qualification does not
+prove recovery from student errors. This experiment follows the distribution
+shift motivation of [DAgger](https://proceedings.mlr.press/v15/ross11a.html) and
+the student-rollout procedure in [RAPTOR](https://arxiv.org/html/2509.11481v2).
+
+PPO also has opt-in `--ppo-optimizer separate`, actor/critic learning rates and
+gradient limits, `--critic-extra-updates`, and `--entropy-coefficient`. These
+variants use strict v6 training contracts. `--initial-action-std` explicitly resets
+exploration with a fresh actor-only parent, or before PPO after the run's own
+imitation phase, and records the reset in ancestry. Defaults retain the historical
+optimizer and objective behavior.
+
+The heuristic teacher's full-throttle and vertical-pitch labels sit exactly at the
+tanh bounds. Fitting them with MSE drives latent means without bound, and with the
+default `exp(-3)` std PPO then barely explores: in the overnight 1c5192b suite every
+low-std arm hit the KL limit on all 300 updates, while the std-0.15 arms reached
+94–97% fresh-craft success. For new imitation runs use `--bc-target-limit 0.95`,
+`--initial-action-std 0.15` and `--dagger-aggregate` (each round fits the whole
+DAgger pool, capped by `--dagger-max-samples`, default twice the BC bank).
+`orbiter.train_dagger_student` now defaults to `--dataset-mode aggregate`.
+
+`orbiter.overnight_suite` executes a frozen JSON plan containing explicit command
+arrays, input/source hashes, per-job time limits and output paths. It runs one
+child per physical GPU, preserves verified checkpoints, and stops before the
+specified UTC deadline with bounded graceful termination. A finite reserve queue
+can fill unused time; jobs still pending at the cutoff are skipped. Validate a
+plan without creating its output directory:
+
+```sh
+.venv/bin/python -m orbiter.overnight_suite --plan runs/overnight-plan.json --run-root runs/overnight --stop-at 2026-10-19T11:00:00Z --gpus 0 1 --plan-only
+```
+
+Remove `--plan-only` to execute that reviewed plan. Three consecutive failed jobs
+stop the queue; source/input drift stops it immediately. Training and method
+selection remain simulator research and never install checkpoints into KSP.
+
+This is an ascent curriculum for screened sequential liquid rockets, with
 fresh craft, drag, actuator and captured-craft stress tests. Four-stage tests
 are stage-count extrapolation for v3 and fresh-craft tests for v4. The captured
 Transfer stress retains measured aerodynamic coefficients and atmosphere in
@@ -568,6 +676,88 @@ Use a new output directory for each validation. Keep exported model metadata
 with its checkpoint. New training output stays in ignored `runs/`; the curated
 models and KSP evidence above are tracked separately. KSP, stock craft files and
 third-party mods are not distributed with this Python package.
+
+## Matched architecture research
+
+`python -m orbiter.train_architectures` compares `mlp256`, `mlp512`, `mlp1024`,
+`gru`, `lstm`, and `transformer` policies with separate actor/value networks.
+GRU/LSTM and the two-layer, four-head, 128-wide Transformer receive a finite
+trailing history (default 16 observations plus executed previous actions).
+History is cleared at every episode boundary and recomputed during PPO updates.
+The Transformer attends only to the available history; dropout is disabled.
+These are bounded-history policies, not unbounded recurrent-state controllers.
+
+Version 2 of this benchmark (the default) changes the training recipe:
+
+- Actions execute `clamp(1.05 * tanh(z), -1, 1)`, so bounds are reached at finite
+  latent values, and teacher labels are fitted through the inverse mapping. An
+  optional `--deadzone` zeroes short orbital action vectors, but it is off by
+  default: the teacher's exact-zero in-band labels and >= deadzone labels just
+  outside the band average into a mean inside the deadzone. A d487bba orbital run
+  validated 29/544 with a 0.2 deadzone and 385/544 with the same weights and none.
+- PPO begins with 16 critic-only rollouts (`--critic-warmup`), and a behavior-cloning
+  anchor to the teacher bank decays linearly from `--bc-coef 1` to zero over the
+  first half of the updates.
+- Orbital observations v2 log-scale remaining delta-v (v1 clips it for every small
+  body), add apse/plane errors in tolerance units, and add logarithmic
+  tolerance-unit shaping so Sun cases are no longer effectively sparse.
+- Validation banks default to 544 cases; minibatches are reshuffled each epoch.
+
+The completed 1b04fee v2 campaign (seeds 901-903, fresh test banks, simulator only)
+beat its paired v1 run in 13 of 15 jobs. Ascent tests passed 486-497/512 for GRU,
+LSTM and Transformer, against 487/512 for the teacher, but only 71-484/512 for the
+MLPs. Orbital tests passed 370-401/544 for the history policies and MLP-256,
+against 474/544 for the teacher; MLP-512 and MLP-1024 passed 252-333/544. One
+context-64 orbital Transformer stopped at the campaign deadline before testing.
+
+Opt-in follow-ups target the remaining gaps. In the v2 campaign, the shared orbital
+policies solved 0/32 Sun and Jool test cases that the analytic teacher solved 32/32
+and 21/32: the policy drifts into states the teacher never visited (covariate shift)
+and runs out of fuel. `--dagger-rounds N` flies the student after BC and aggregates
+teacher labels at its states. `--anchor-source rollout` anchors PPO to teacher labels
+at the states each rollout visits, and `--bc-floor` keeps that anchor from decaying to
+zero ([TGRL](https://arxiv.org/abs/2307.03186), [forgetting in fine-tuning](https://arxiv.org/abs/2402.02868)).
+Feedforward policies hit the KL limit after a few minibatches on nearly every update;
+`--kl-control adaptive_lr` instead scales the actor rate by 1.5 whenever measured KL
+leaves [target/2, 2·target], as in [Rudin et al. 2021](https://arxiv.org/abs/2109.11978),
+with a hard stop only above `--kl-guard` times the target.
+
+`--action-transform tanh --orbital-version 1 --bc-coef 0 --critic-warmup 0`
+restores the v1 action mapping, observations and PPO start; v1 checkpoints still
+load and evaluate.
+
+Two benchmark contracts are separate. `--task ascent` uses the established
+Kerbin 2–4-stage surrogate and requires `--actor-from` pointing to a frozen
+56-input teacher. `--task orbital` trains one shared policy across **all 17
+stock bodies** from `orbiter/data/stock_system.json`, varying the active liquid
+stage's mass, dry mass, thrust, Isp, and pointing rate. Planet/moon cases start
+already near the destination on incoming hyperbolas. Sun cases start in bound
+heliocentric orbits requiring adjustment; its outer guard is numerical, not a
+fictitious stock SOI. No surface launch is attempted from Sun or Jool.
+
+```sh
+python -m orbiter.train_architectures --task orbital --architecture lstm \
+  --run-dir runs/orbital_lstm --device cuda:0 --seed 901
+```
+
+Use identical seeds, world/horizon/update counts, teacher sample budgets, and
+optimization settings for architecture comparisons. `best.pt` is selected on
+the validation bank; separate comparison seeds never select weights. Final
+orbital reports include per-body failures, independent scalar powered replay,
+and a full unpowered NumPy orbit check for successful policy flights. Ideal
+impulsive budget diagnostics are not feasibility proofs. The 3D benchmark does
+not model aerocapture, heating, terrain or arbitrary propulsion/staging graphs.
+Local capture and ascent scores do **not** establish complete interbody mission
+success or actual KSP operation. Existing game-approved policies are unchanged.
+
+The finite `orbiter.overnight_suite` runner also accepts this module and checks
+that completed orbital reports contain every stock body. Frozen plan/input/code
+hashes, physical CUDA UUID assignment, per-job limits, and the overall UTC stop
+time are checked by the same supervisor used for earlier experiments.
+
+Transformer design references: [GTrXL's RL stability study](https://arxiv.org/abs/1910.06764)
+and [PyTorch's encoder documentation](https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoder.html).
+This finite-window pre-normalized encoder is not an implementation of GTrXL.
 
 ## Research informing this implementation
 

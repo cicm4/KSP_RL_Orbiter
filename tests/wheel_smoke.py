@@ -60,8 +60,9 @@ def main():
             config = EnvConfig.from_dict(json.loads(item.read_text()))
             assert config.stages
     assert "OrbiterBootstrap" in package.joinpath("ksp_bootstrap.cs").read_text()
-    assert "OrbiterAutopilot" in package.joinpath("ksp_autopilot.cs").read_text()
-    for module in ("generalized_env.py", "generalized_aero_env.py", "train_generalized.py", "release_mod.py", "release_install.py"):
+    assert "OrbiterAutopilot" in package.joinpath("native/Ksp/Addon.cs").read_text()
+    assert package.joinpath("native/Core/Policy.cs").is_file()
+    for module in ("generalized_env.py", "generalized_aero_env.py", "train_generalized.py", "ablation_suite.py", "overnight_suite.py", "ascent_planner.py", "distill_ascent.py", "train_dagger_student.py", "release_mod.py", "native_export.py", "tensor_memo.py", "sequence_policy.py", "batched_capture.py", "train_architectures.py"):
         assert package.joinpath(module).is_file(), module
     assert "Orbiter Autopilot" in package.joinpath("control.html").read_text()
     vehicle_profile = json.loads(package.joinpath("data/transfer_vehicle.json").read_text())

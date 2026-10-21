@@ -15,6 +15,7 @@ import numpy as np
 import torch
 
 from .env import EnvConfig, G0, HeadlessOrbiterEnv, Stage
+from .tensor_memo import TensorMemo
 
 TASK = "vehicle_conditioned_ascent_v3"
 FEATURE_SCHEMA = "ascent16_log_q_twr_stage4x8_log_thrust_globals6_log_slew_v3"
@@ -259,6 +260,11 @@ class BatchedAscent:
     Each sampled craft is a distinct payload/stage/performance descriptor. Ideal
     delta-v and pad TWR are screening lower bounds, not finite-burn feasibility
     proofs. Unsuccessful physically plausible craft remain policy failures.
+
+    The historical ``truncate`` deadline retains the continuation potential for
+    value bootstrapping. An explicit ``terminal`` deadline instead ends the
+    mission, cancels continuation shaping and applies ``timeout_penalty``. Both
+    objectives retain the existing elapsed-time cost and physical-event priority.
     """
 
     def __init__(
@@ -271,6 +277,8 @@ class BatchedAscent:
         physics_dt=0.25,
         max_time=1600.0,
         orbit_tolerance=20000.0,
+        deadline_mode="truncate",
+        timeout_penalty=0.0,
     ):
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError("count must be a positive integer")
@@ -278,12 +286,26 @@ class BatchedAscent:
             raise ValueError("physics_dt must be in (0,2]")
         if not math.isfinite(max_time) or max_time <= 0:
             raise ValueError("max_time must be positive")
+        if deadline_mode not in ("truncate", "terminal"):
+            raise ValueError("deadline_mode must be 'truncate' or 'terminal'")
+        if (
+            isinstance(timeout_penalty, bool)
+            or not math.isfinite(timeout_penalty)
+            or timeout_penalty > 0
+        ):
+            raise ValueError("timeout_penalty must be finite and nonpositive")
+        if deadline_mode == "truncate" and timeout_penalty != 0:
+            raise ValueError("timeout_penalty requires a terminal deadline")
         self.count, self.device = count, torch.device(device)
+        for name in ("_telemetry_memo", "_observation_memo", "_context_memo",
+                     "_atmosphere_memo", "_atmosphere_table_memo"):
+            setattr(self, name, TensorMemo())
         self.envelope = envelope or VehicleEnvelope()
         self.generator = torch.Generator(device=self.device).manual_seed(seed)
         self.dtype = torch.float64
         self.physics_dt, self.max_time = physics_dt, max_time
         self.orbit_tolerance = orbit_tolerance
+        self.deadline_mode, self.timeout_penalty = deadline_mode, timeout_penalty
         self.mu, self.radius = 3.5316e12, 600000.0
         self.rotation_period, self.atmosphere_depth = 21549.425, 70000.0
         self.control_dt, self.gamma = 2.0, 0.999
@@ -318,11 +340,15 @@ class BatchedAscent:
             "time",
             "previous_potential",
             "episode_return",
+            "episode_task_return",
+            "discounted_task_return",
+            "episode_discount",
             "ideal_delta_v",
         ):
             setattr(self, name, self.zeros(count))
         self.stage = torch.zeros(count, dtype=torch.long, device=self.device)
         self.stage_count = self.stage.clone()
+        self.steps = self.stage.clone()
         self.reset()
 
     def zeros(self, *shape):
@@ -335,12 +361,21 @@ class BatchedAscent:
 
     @torch.no_grad()
     def reset(self, mask=None):
+        self._reset_worlds(mask)
+        return self.observation()
+
+    def _reset_worlds(self, mask):
+        """Resample the masked worlds; return their indices (no observation).
+
+        Subclasses extend this (not reset) so a rejected-craft resample draws
+        exactly the same random sequence as the historical recursive reset().
+        """
         if mask is None:
             mask = torch.ones(self.count, dtype=torch.bool, device=self.device)
         selected = self.ids[mask]
         n, e = selected.numel(), self.envelope
         if n == 0:
-            return self.observation()
+            return selected
         payload = self.uniform(
             (n,), math.log(e.payload_min), math.log(e.payload_max)
         ).exp()
@@ -412,6 +447,10 @@ class BatchedAscent:
         )
         self.pitch[selected], self.throttle[selected], self.time[selected] = 90, 0, 0
         self.episode_return[selected] = 0
+        self.episode_task_return[selected] = 0
+        self.discounted_task_return[selected] = 0
+        self.episode_discount[selected] = 1
+        self.steps[selected] = 0
         self.previous_potential[selected] = self.potential()[selected]
         rejected = torch.zeros(self.count, dtype=torch.bool, device=self.device)
         rejected[selected] = ideal_dv < e.minimum_ideal_delta_v
@@ -421,26 +460,64 @@ class BatchedAscent:
                 if getattr(self, "_resampling_depth", 0) >= 100:
                     raise ValueError("envelope cannot pass ideal delta-v screen")
                 self._resampling_depth = getattr(self, "_resampling_depth", 0) + 1
-                self.reset(rejected)
+                # The discarded observation of the historical recursive
+                # reset() is pure, so only the resampling itself is repeated.
+                self._reset_worlds(rejected)
                 self._resampling_depth -= 1
-        return self.observation()
+        return selected
+
+    ATMOSPHERE_TABLES = (
+        "_atmosphere_heights",
+        "_atmosphere_height_delta",
+        "_atmosphere_positive",
+        "_atmosphere_log_lower",
+        "_atmosphere_log_delta",
+        "_atmosphere_lower",
+        "_atmosphere_delta",
+    )
+
+    def _atmosphere_rows(self):
+        """Interval tables packed row-wise, so one gather replaces six."""
+        def pack():
+            return torch.cat(
+                (
+                    self._atmosphere_heights[:-1, None],
+                    self._atmosphere_height_delta[:, None],
+                    self._atmosphere_log_lower,
+                    self._atmosphere_log_delta,
+                    self._atmosphere_lower,
+                    self._atmosphere_delta,
+                ),
+                -1,
+            )
+
+        return self._atmosphere_table_memo.get(
+            [getattr(self, name) for name in self.ATMOSPHERE_TABLES], (), pack
+        )
 
     def atmosphere_at(self, altitude):
         h = altitude.clamp(min=0)
         index = torch.searchsorted(self._atmosphere_heights, h.contiguous(), right=True)
         index = index.clamp(1, len(self._atmosphere_heights) - 1) - 1
-        f = (
-            (h - self._atmosphere_heights[index]) / self._atmosphere_height_delta[index]
-        ).clamp(0, 1)[:, None]
+        # Exact copies of the per-interval table entries (index <= len-2).
+        rows = self._atmosphere_rows()[index]
+        f = ((h - rows[:, 0]) / rows[:, 1]).clamp(0, 1)[:, None]
         out = torch.where(
             self._atmosphere_positive[index],
-            (
-                self._atmosphere_log_lower[index]
-                + f * self._atmosphere_log_delta[index]
-            ).exp(),
-            self._atmosphere_lower[index] + f * self._atmosphere_delta[index],
+            (rows[:, 2:4] + f * rows[:, 4:6]).exp(),
+            rows[:, 6:8] + f * rows[:, 8:10],
         )
         return torch.where((h >= self.atmosphere_depth)[:, None], 0, out)
+
+    def _state_atmosphere(self):
+        """atmosphere_at() for the current state, shared by telemetry and thrust."""
+        return self._atmosphere_memo.get(
+            [self.state, *(getattr(self, name) for name in self.ATMOSPHERE_TABLES)],
+            (self.radius, self.atmosphere_depth),
+            lambda: self.atmosphere_at(
+                torch.hypot(self.state[:, 0], self.state[:, 1]) - self.radius
+            ),
+        )
 
     def mass(self):
         future = self.stage_ids > self.stage[:, None]
@@ -453,6 +530,14 @@ class BatchedAscent:
         )
 
     def telemetry(self):
+        """Planar orbit telemetry, memoized exactly on the current state."""
+        return self._telemetry_memo.get(
+            [self.state, *(getattr(self, name) for name in self.ATMOSPHERE_TABLES)],
+            (self.mu, self.radius, self.rotation_period, self.atmosphere_depth),
+            self._telemetry,
+        )
+
+    def _telemetry(self):
         x, y, vx, vy = self.state.unbind(-1)
         radius = torch.hypot(x, y)
         vr, vt = (x * vx + y * vy) / radius, (x * vy - y * vx) / radius
@@ -468,7 +553,9 @@ class BatchedAscent:
             parameter / (1 - eccentricity).clamp(min=1e-15) - self.radius,
             torch.inf,
         )
-        rho = self.atmosphere_at(radius - self.radius)[:, 0]
+        # Same values as atmosphere_at(radius - self.radius): the shared
+        # current-state lookup evaluates hypot(x, y) on the same views.
+        rho = self._state_atmosphere()[:, 0]
         relative_vt = vt - 2 * math.pi / self.rotation_period * radius
         q = 0.5 * rho * (vr.square() + relative_vt.square())
         return dict(
@@ -491,14 +578,35 @@ class BatchedAscent:
         )
 
     def available_thrust(self):
-        s = self.stages[self.ids, self.stage]
-        pressure = self.atmosphere_at(
-            torch.hypot(self.state[:, 0], self.state[:, 1]) - self.radius
-        )[:, 1]
+        return self._available_thrust(
+            self.stages[self.ids, self.stage], self._state_atmosphere()[:, 1]
+        )
+
+    def _available_thrust(self, s, pressure):
         isp = s[:, 3] + (s[:, 4] - s[:, 3]) * (pressure / 101325).clamp(max=1)
         return torch.where(self.fuel > 1e-7, s[:, 2] * isp / s[:, 3], 0)
 
+    CONTEXT_INPUTS = (
+        "target",
+        "stages",
+        "payload",
+        "stage_ids",
+        "stage_count",
+        "initial_mass",
+        "drag_area",
+        "attitude_rate",
+        "attitude_tau",
+    )
+
     def context(self):
+        """Per-episode craft context; memoized until a reset changes the craft."""
+        return self._context_memo.get(
+            [getattr(self, name) for name in self.CONTEXT_INPUTS],
+            (self.mu, self.radius),
+            self._context,
+        )
+
+    def _context(self):
         vc = (self.mu / (self.radius + self.target)).sqrt()
         tc = (self.radius + self.target) / vc
         dry, fuel, thrust, isp, isp_sl = self.stages.unbind(-1)
@@ -535,10 +643,40 @@ class BatchedAscent:
         )
         return torch.cat((context, global_context), -1)
 
+    # Every tensor attribute the uncached observation reads (audited by tests).
+    OBSERVATION_INPUTS = CONTEXT_INPUTS + ATMOSPHERE_TABLES + (
+        "state",
+        "ids",
+        "stage",
+        "fuel",
+        "pitch",
+        "throttle",
+        "time",
+    )
+
     def observation(self):
+        """Float32 observation, memoized exactly on the current state.
+
+        Each call returns the same tensor object while the state is unchanged;
+        consumers copy it (History) and must not modify it in place.
+        """
+        return self._observation_memo.get(
+            [getattr(self, name) for name in self.OBSERVATION_INPUTS],
+            (
+                self.mu,
+                self.radius,
+                self.rotation_period,
+                self.atmosphere_depth,
+                self.max_time,
+            ),
+            self._observation,
+        )
+
+    def _observation(self):
         d = self.telemetry()
         vc = (self.mu / (self.radius + self.target)).sqrt()
         stage_fuel = self.stages[self.ids, self.stage, 1]
+        mass = self.mass()
         values = torch.stack(
             (
                 d["altitude"] / self.target,
@@ -547,14 +685,14 @@ class BatchedAscent:
                 (d["apoapsis"] / self.target).clamp(-10, 10),
                 d["periapsis"] / self.radius,
                 self.fuel / stage_fuel,
-                self.mass() / self.initial_mass,
+                mass / self.initial_mass,
                 self.stage / (self.stage_count - 1).clamp(min=1),
                 (self.pitch * math.pi / 180).sin(),
                 (self.pitch * math.pi / 180).cos(),
                 self.throttle,
                 self.time / self.max_time,
                 (d["dynamic_pressure"] / 40000).log1p(),
-                (self.available_thrust() / self.mass() / G0).log1p(),
+                (self.available_thrust() / mass / G0).log1p(),
                 (self.target - d["altitude"]) / self.target,
                 d["energy"] / (-self.mu / (2 * (self.radius + self.target))),
             ),
@@ -587,25 +725,55 @@ class BatchedAscent:
         return torch.stack((2 * throttle - 1, (pitch + 10) / 50 - 1), -1).float()
 
     def derivative(self, state, mass, pitch, thrust):
+        return self._fused_derivative(state, mass, thrust / mass, self._attitude(pitch))
+
+    @staticmethod
+    def _attitude(pitch):
+        p = pitch * math.pi / 180
+        return p, p.sin(), p.cos()
+
+    def _fused_derivative(self, state, mass, thrust_acceleration, attitude, atmosphere=None):
+        """RK4 stage derivative with shared geometry and hoisted invariants.
+
+        Bitwise identical to the historical derivative: every expression keeps
+        its operation order; repeated subexpressions (radius**3, thrust/mass,
+        the pitch trigonometry, and, for subclasses, the geometry, density
+        and air speed) are evaluated once. ``atmosphere`` may supply the
+        current-state lookup already computed for the thrust.
+        """
         x, y, vx, vy = state.unbind(-1)
         radius = torch.hypot(x, y)
         ux, uy = x / radius, y / radius
-        rho = self.atmosphere_at(radius - self.radius)[:, 0]
+        if atmosphere is None:
+            atmosphere = self.atmosphere_at(radius - self.radius)
+        half_rho = 0.5 * atmosphere[:, 0]
         omega = 2 * math.pi / self.rotation_period
         avx, avy = vx + omega * y, vy - omega * x
-        drag = 0.5 * rho * self.drag_area * torch.hypot(avx, avy) / mass
-        p = pitch * math.pi / 180
+        speed = torch.hypot(avx, avy)
+        p, sin_p, cos_p = attitude
+        drag = half_rho * self.drag_area * speed / mass
+        cubed = radius**3
         ax = (
-            -self.mu * x / radius**3
+            -self.mu * x / cubed
             - drag * avx
-            + thrust / mass * (p.sin() * ux - p.cos() * uy)
+            + thrust_acceleration * (sin_p * ux - cos_p * uy)
         )
         ay = (
-            -self.mu * y / radius**3
+            -self.mu * y / cubed
             - drag * avy
-            + thrust / mass * (p.sin() * uy + p.cos() * ux)
+            + thrust_acceleration * (sin_p * uy + cos_p * ux)
         )
+        correction = self._extra_acceleration(
+            ux=ux, uy=uy, avx=avx, avy=avy, speed=speed, half_rho=half_rho,
+            mass=mass, pitch_radians=p,
+        )
+        if correction is not None:
+            ax, ay = ax + correction[0], ay + correction[1]
         return torch.stack((vx, vy, ax, ay), -1)
+
+    def _extra_acceleration(self, **_geometry):
+        """Subclass hook for additional (e.g. aerodynamic) accelerations."""
+        return None
 
     @torch.no_grad()
     def step(self, action):
@@ -620,6 +788,11 @@ class BatchedAscent:
         )
         elapsed = torch.zeros_like(remaining)
         impact = torch.zeros(self.count, dtype=torch.bool, device=self.device)
+        physics_dt = torch.full_like(remaining, self.physics_dt)
+        # The fused path is exact for this class's derivative() (and the
+        # _extra_acceleration hook); an overriding derivative() is honoured.
+        fused = type(self).derivative is BatchedAscent.derivative
+        drained = False
         # A bounded extra iteration per possible stage handles fuel exhaustion
         # inside a physical step without negative fuel or lost control time.
         standard_substeps = math.ceil(self.control_dt / self.physics_dt)
@@ -629,6 +802,7 @@ class BatchedAscent:
             # host check after the normal interval decides whether any world
             # needs the rare fuel-boundary tail; no per-substep synchronization.
             if substep >= standard_substeps and not bool(continuing.any()):
+                drained = True
                 break
             advance = (
                 (self.fuel <= 1e-7) & (self.stage < self.stage_count - 1) & continuing
@@ -641,7 +815,7 @@ class BatchedAscent:
             mdot = torch.where(
                 self.fuel > 1e-7, self.throttle * s[:, 2] / (s[:, 3] * G0), 0
             )
-            dt = torch.minimum(remaining, torch.full_like(remaining, self.physics_dt))
+            dt = torch.minimum(remaining, physics_dt)
             dt = torch.where(
                 mdot > 0, torch.minimum(dt, self.fuel / mdot.clamp(min=1e-20)), dt
             )
@@ -650,22 +824,45 @@ class BatchedAscent:
                 min=-self.attitude_rate, max=self.attitude_rate
             ) * dt
             self.pitch += pitch_change
-            thrust = self.available_thrust() * self.throttle
+            if fused:
+                # available_thrust() and the first RK4 stage evaluate the
+                # atmosphere at the same current state: look it up once.
+                atmosphere = self._state_atmosphere()
+                thrust = self._available_thrust(s, atmosphere[:, 1]) * self.throttle
+            else:
+                thrust = self.available_thrust() * self.throttle
             mass = self.mass() - mdot * dt / 2
-            half = dt[:, None] / 2
-            k1 = self.derivative(self.state, mass, self.pitch, thrust)
-            k2 = self.derivative(self.state + half * k1, mass, self.pitch, thrust)
-            k3 = self.derivative(self.state + half * k2, mass, self.pitch, thrust)
-            k4 = self.derivative(
-                self.state + dt[:, None] * k3, mass, self.pitch, thrust
-            )
-            self.state += dt[:, None] * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+            step_dt = dt[:, None]
+            half = step_dt / 2
+            if fused:
+                attitude = self._attitude(self.pitch)
+                acceleration = thrust / mass
+                k1 = self._fused_derivative(
+                    self.state, mass, acceleration, attitude, atmosphere
+                )
+                k2 = self._fused_derivative(
+                    self.state + half * k1, mass, acceleration, attitude
+                )
+                k3 = self._fused_derivative(
+                    self.state + half * k2, mass, acceleration, attitude
+                )
+                k4 = self._fused_derivative(
+                    self.state + step_dt * k3, mass, acceleration, attitude
+                )
+            else:
+                k1 = self.derivative(self.state, mass, self.pitch, thrust)
+                k2 = self.derivative(self.state + half * k1, mass, self.pitch, thrust)
+                k3 = self.derivative(self.state + half * k2, mass, self.pitch, thrust)
+                k4 = self.derivative(self.state + step_dt * k3, mass, self.pitch, thrust)
+            self.state += step_dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
             self.fuel = (self.fuel - mdot * dt).clamp(min=0)
             self.time += dt
             elapsed += dt
             remaining = (remaining - dt).clamp(min=0)
             impact |= torch.hypot(self.state[:, 0], self.state[:, 1]) <= self.radius
-        if bool(((remaining > 1e-8) & ~impact).any()):
+        # After an early exit no world was continuing (remaining <= 1e-9 or
+        # impact), so this condition is already known false: skip its sync.
+        if not drained and bool(((remaining > 1e-8) & ~impact).any()):
             raise RuntimeError("integration exhausted stage/substep bound")
         d = self.telemetry()
         success = (
@@ -682,16 +879,30 @@ class BatchedAscent:
         escape = d["energy"] >= 0
         fuel_empty = (self.stage == self.stage_count - 1) & (self.fuel <= 1e-7)
         terminated = success | impact | escape | fuel_empty
-        truncated = ~terminated & (self.time >= self.max_time - 1e-8)
+        deadline = ~terminated & (self.time >= self.max_time - 1e-8)
+        terminal_reward = torch.where(terminated, torch.where(success, 100, -30), 0)
+        if self.deadline_mode == "terminal":
+            terminated = terminated | deadline
+            truncated = torch.zeros_like(deadline)
+            terminal_reward = torch.where(
+                deadline, self.timeout_penalty, terminal_reward.to(self.dtype)
+            )
+        else:
+            truncated = deadline
         phi = self.potential()
         shaping = self.gamma * torch.where(terminated, 0, phi) - self.previous_potential
-        reward = (
-            shaping
-            + torch.where(terminated, torch.where(success, 100, -30), 0)
-            - 0.003 * elapsed
-        )
+        # Keep the historical operation order for exact v3/v4 default rewards.
+        time_reward = -0.003 * elapsed
+        reward = shaping + terminal_reward - 0.003 * elapsed
+        task_reward = terminal_reward + time_reward
         self.previous_potential = phi
         self.episode_return += reward
+        self.episode_task_return += task_reward
+        # Gamma follows control decisions, as in the shaping term and PPO;
+        # actual elapsed seconds determine only the existing time cost.
+        self.discounted_task_return += self.episode_discount * task_reward
+        self.episode_discount *= self.gamma
+        self.steps += 1
         # Reason codes: success, impact, escape, fuel, time. Success has priority.
         reason = torch.where(
             success,
@@ -700,7 +911,7 @@ class BatchedAscent:
                 impact,
                 2,
                 torch.where(
-                    escape, 3, torch.where(fuel_empty, 4, torch.where(truncated, 5, 0))
+                    escape, 3, torch.where(fuel_empty, 4, torch.where(deadline, 5, 0))
                 ),
             ),
         )
@@ -708,6 +919,14 @@ class BatchedAscent:
             success=success,
             reason=reason,
             episode_return=self.episode_return.clone(),
+            terminal_reward=terminal_reward.to(self.dtype),
+            time_reward=time_reward,
+            task_reward=task_reward,
+            shaping_reward=shaping,
+            elapsed=elapsed,
+            discounted_task_return=self.discounted_task_return.clone(),
+            episode_task_return=self.episode_task_return.clone(),
+            steps=self.steps.clone(),
             time=self.time.clone(),
             apoapsis=d["apoapsis"],
             periapsis=d["periapsis"],

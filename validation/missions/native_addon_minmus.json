@@ -1,0 +1,64 @@
+{
+  "id": "native_addon_minmus",
+  "frontend": "self_contained_ksp_addon",
+  "runtime": "native C# inside KSP 1.12.5; no Python or kRPC",
+  "date_utc": "2026-10-21",
+  "launch": "fresh launch of the addon-generated Ships/VAB/OrbiterRL Transfer.craft with default crew (autotest fresh)",
+  "target": "Minmus",
+  "target_altitude_m": 60000,
+  "ascent_policy_sha256": "b8a172e507bb1eb50260ffa69a6ca1219d00a8ee221927dd78085b621457a416",
+  "capture_policy_sha256": "cc95cb37c229b9d4fef6fed22c7728abdfd12028439cb20724e0bb01bef56ca5",
+  "source_checkpoints": {
+    "ascent": "models/transfer_ascent_ppo.zip",
+    "capture": "models/moon_capture.zip"
+  },
+  "parking_orbit_km": [
+    72.23,
+    137.16
+  ],
+  "rejected_windows": [
+    "final_node_lost_encounter"
+  ],
+  "encounter": {
+    "predicted_periapsis_m": 59946.108010316646,
+    "verified_by": "ksp_patched_conics",
+    "node_delta_v": 889.2532969686425
+  },
+  "capture_steps": 134,
+  "final_orbit_km": [
+    59.476,
+    64.939
+  ],
+  "coast_probes": [
+    {
+      "quarter": 1,
+      "periapsis": 59475.849857054025,
+      "apoapsis": 64939.345598850196,
+      "failures": []
+    },
+    {
+      "quarter": 2,
+      "periapsis": 59475.84982939482,
+      "apoapsis": 64939.34558412117,
+      "failures": []
+    },
+    {
+      "quarter": 3,
+      "periapsis": 59475.849817245224,
+      "apoapsis": 64939.34555226595,
+      "failures": []
+    },
+    {
+      "quarter": 4,
+      "periapsis": 59475.849805945545,
+      "apoapsis": 64939.34552270871,
+      "failures": []
+    }
+  ],
+  "coast_seconds": 6387.886120234558,
+  "success": true,
+  "outcome": "Stable 59.5 x 64.9 km orbit of Minmus verified for one full revolution",
+  "log": "validation/missions/native_addon_minmus.jsonl.gz",
+  "log_sha256": "932bb3126f9f6427641254adfca1789ba2002e2228b0fb0b808d5d8bb999edc1",
+  "scope": "One actual KSP flight from a fresh launch through a verified one-orbit coast; a demonstration, not a success rate."
+}
