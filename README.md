@@ -693,6 +693,18 @@ Version 2 of this benchmark (the default) changes the training recipe:
   tolerance-unit shaping so Sun cases are no longer effectively sparse.
 - Validation banks default to 544 cases; minibatches are reshuffled each epoch.
 
+Opt-in follow-ups target the remaining gaps. In the v2 campaign, the shared orbital
+policies solved 0/32 Sun and Jool test cases that the analytic teacher solved 32/32
+and 21/32: the policy drifts into states the teacher never visited (covariate shift)
+and runs out of fuel. `--dagger-rounds N` flies the student after BC and aggregates
+teacher labels at its states. `--anchor-source rollout` anchors PPO to teacher labels
+at the states each rollout visits, and `--bc-floor` keeps that anchor from decaying to
+zero ([TGRL](https://arxiv.org/abs/2307.03186), [forgetting in fine-tuning](https://arxiv.org/abs/2402.02868)).
+Feedforward policies hit the KL limit after a few minibatches on nearly every update;
+`--kl-control adaptive_lr` instead scales the actor rate by 1.5 whenever measured KL
+leaves [target/2, 2·target], as in [Rudin et al. 2021](https://arxiv.org/abs/2109.11978),
+with a hard stop only above `--kl-guard` times the target.
+
 `--action-transform tanh --orbital-version 1 --bc-coef 0 --critic-warmup 0`
 restores the v1 action mapping, observations and PPO start; v1 checkpoints still
 load and evaluate.

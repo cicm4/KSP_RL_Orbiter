@@ -255,3 +255,47 @@ def test_deadzone_mean_of_zero_and_small_teacher_labels_executes_no_thrust():
     labels = torch.tensor([[0., 0., 0.], [.05, 0., 0.]])
     mean = policy.squashed_target(labels).mean(0, keepdim=True)
     assert policy.execute(mean).norm() == 0
+
+
+def test_adaptive_lr_moves_rate_with_kl_and_rollout_anchor_uses_visited_labels():
+    from types import SimpleNamespace
+    from orbiter.train_architectures import anchor_coefficient, ppo_update
+    torch.manual_seed(3)
+    policy = SequencePolicy('mlp256', 32, 3, 1, action_transform='scaled_tanh', action_scale=1.05)
+    h = History(16, 1, 32, 3, 'cpu'); h.append(torch.randn(16, 32))
+    with torch.no_grad(): _, latent, logp = policy.sample(h.data)
+    actor = torch.optim.Adam([*policy.actor.parameters(), policy.log_std], lr=1e-5)
+    critic = torch.optim.Adam(policy.critic.parameters(), lr=1e-3)
+    labels = torch.zeros(16, 3)
+    base = dict(device='cpu', epochs=2, batch_size=8, entropy=0., critic_extra=0,
+                kl_control='adaptive_lr', min_actor_lr=1e-7, max_actor_lr=1e-3, kl_guard=8.)
+    # Tiny measured KL: the rate grows and no minibatch is discarded.
+    report = ppo_update(policy, (h.data, latent, logp, torch.randn(16), torch.ones(16), labels),
+                        actor, critic, SimpleNamespace(target_kl=1., **base), anchor_coef=1.)
+    assert report['actor_steps'] == 4 and not report['kl_early_stop']
+    assert report['actor_lr'] > 1e-5 and report['anchor_mse'] is not None
+    # KL above twice the target shrinks the rate; the guard stops runaways.
+    report = ppo_update(policy, (h.data, latent, logp - 1, torch.randn(16), torch.ones(16)),
+                        actor, critic, SimpleNamespace(target_kl=.05, **base))
+    assert report['kl_early_stop'] and report['actor_lr'] < 1e-3
+    floor = SimpleNamespace(bc_coef=1., bc_decay_updates=4, bc_floor=.1)
+    assert [anchor_coefficient(floor, u) for u in (1, 4, 9)] == [1., .25, .1]
+
+
+def test_dagger_rounds_and_rollout_anchor_run_end_to_end(tmp_path):
+    from orbiter.train_architectures import main
+    root = tmp_path/'run'
+    main(['--run-dir', str(root), '--task', 'orbital', '--architecture', 'mlp256', '--device', 'cpu',
+          '--worlds', '17', '--horizon', '3', '--updates', '2', '--label-worlds', '17',
+          '--label-steps', '4', '--bc-updates', '2', '--batch-size', '17', '--cpu-threads', '1',
+          '--eval-worlds', '17', '--test-worlds', '17', '--critic-warmup', '1',
+          '--validation-interval', '1', '--skip-qualification', '--dagger-rounds', '2',
+          '--anchor-source', 'rollout', '--bc-floor', '.2', '--kl-control', 'adaptive_lr'])
+    events = [json.loads(x) for x in (root/'events.jsonl').read_text().splitlines()]
+    rounds = [e for e in events if e['event'] == 'dagger_round']
+    assert [e['bank_samples'] for e in rounds] == [17*4*2, 17*4*3]
+    ppo = [e for e in events if e['event'] == 'ppo']
+    assert all(e['anchor_mse'] is not None and 'actor_lr' in e for e in ppo)
+    assert [e['anchor_coef'] for e in ppo] == [1., .2]  # decays over updates//2=1, then floor
+    contract = json.loads((root/'contract.json').read_text())['training']
+    assert contract['anchor_source'] == 'rollout' and contract['dagger_rounds'] == 2

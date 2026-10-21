@@ -208,6 +208,11 @@ def evaluate(model, task, count, device, seed, *, four_stage=False, qualify=Fals
     return report
 
 
+def teacher_action(env, parent):
+    """Teacher label at the env's current state: frozen parent or analytic."""
+    return parent(env.observation()) if parent is not None else env.teacher()
+
+
 def fit_teacher(model, task, parent, args, log):
     """Behavior-clone the teacher; return the label bank for the PPO anchor.
 
@@ -247,23 +252,51 @@ def fit_teacher(model, task, parent, args, log):
         loss=(model.actor(x[ids]).tanh()-y[ids]).square().mean()
         optimizer.zero_grad();loss.backward();torch.nn.utils.clip_grad_norm_(model.actor.parameters(),.5);optimizer.step()
         if (update+1)%100==0:log('bc',update=update+1,action_mse=float(loss.detach()))
+    for round_index in range(getattr(args,'dagger_rounds',0)):
+        # DAgger (Ross et al. 2011): fly the current student, label every
+        # visited state with the teacher, aggregate and refit. The teacher is
+        # queried at the student's states, so covariate shift is corrected.
+        check_stop();started=time.monotonic()
+        env=make_env(task,args.label_worlds,args.device,args.seed+400000+round_index,
+                     orbital_version=args.orbital_version)
+        history=History(env.count,model.spec['context'],env.observations,env.actions,args.device)
+        history.append(env.observation())
+        xs,ys=[],[];successes=episodes=0
+        with torch.no_grad():
+            for _ in range(args.label_steps):
+                check_stop()
+                xs.append(history.data);ys.append(teacher_action(env,parent))
+                action=model(history.data)
+                _,_,done,info=env.step(action)
+                successes+=int(info['success'].sum());episodes+=int(done.sum())
+                history.append(env.reset(done),action,done)
+        x=torch.cat((x,*xs));y=torch.cat((y,model.squashed_target(torch.cat(ys))))
+        for update in range(args.bc_updates):
+            check_stop()
+            ids=torch.randint(len(x),(min(args.batch_size,len(x)),),generator=rng,device=args.device)
+            loss=(model.actor(x[ids]).tanh()-y[ids]).square().mean()
+            optimizer.zero_grad();loss.backward();torch.nn.utils.clip_grad_norm_(model.actor.parameters(),.5);optimizer.step()
+        log('dagger_round',round=round_index+1,student_successes=successes,student_episodes=episodes,
+            bank_samples=len(x),action_mse=float(loss.detach()),elapsed_s=time.monotonic()-started)
+        del xs,ys,env,history
     with torch.no_grad():
         latent=torch.cat([model.actor(chunk) for chunk in x.split(8192)])
         log('bc_latent',mean_abs=float(latent.abs().mean()),max_abs=float(latent.abs().max()),
             saturated_fraction=float((latent.tanh().abs()>.99).float().mean()))
-    del observations,labels,env
+    del observations,labels
     return x,y
 
 
 def anchor_coefficient(args, update):
-    """Linearly decaying behavior-cloning anchor toward the teacher bank."""
+    """Linearly decaying behavior-cloning anchor, never below ``bc_floor``."""
+    floor=getattr(args,'bc_floor',0.)
     if not args.bc_coef or update > args.bc_decay_updates:
-        return 0.
-    return args.bc_coef*(1-(update-1)/max(1,args.bc_decay_updates))
+        return floor
+    return max(floor,args.bc_coef*(1-(update-1)/max(1,args.bc_decay_updates)))
 
 
 @torch.no_grad()
-def collect_rollout(model, env, history, args):
+def collect_rollout(model, env, history, args, teacher=None):
     """One on-policy rollout of ``args.horizon`` steps plus GAE targets.
 
     Returns ``((histories, latents, log_probs, advantages, targets), stats)``.
@@ -272,11 +305,14 @@ def collect_rollout(model, env, history, args):
     Stored history windows are not cloned because ``History.append`` always
     builds a new window, and reset() already returns the post-reset
     observation, so it is not rebuilt. Values equal the historical loop.
+    With ``teacher`` (a callable on the env), the teacher's label at every
+    visited state is appended as a sixth element for the on-policy anchor.
     """
-    xs=[];zs=[];lps=[];values=[];rewards=[];dones=[]
+    xs=[];zs=[];lps=[];values=[];rewards=[];dones=[];labels=[]
     successes=torch.zeros((),dtype=torch.long,device=args.device);episodes=torch.zeros_like(successes)
     for _ in range(args.horizon):
         check_stop();x=history.data;xs.append(x)
+        if teacher is not None:labels.append(teacher(env))
         action,z,lp=model.sample(x);value=model.critic(x).squeeze(-1)
         _,reward,done,info=env.step(action)
         zs.append(z);lps.append(lp);values.append(value);rewards.append(reward);dones.append(done)
@@ -298,13 +334,16 @@ def collect_rollout(model, env, history, args):
     stats=dict(successes=int(successes),episodes=int(episodes),
                latent_saturation=float((latent_all.tanh().abs()>.99).float().mean()),
                explained_variance=1-float((targets-torch.cat(values)).var()/(targets.var()+1e-8)))
-    return (torch.cat(xs),latent_all,torch.cat(lps),advantages,targets),stats
+    data=(torch.cat(xs),latent_all,torch.cat(lps),advantages,targets)
+    if teacher is not None:data+=(model.squashed_target(torch.cat(labels)),)
+    return data,stats
 
 
 def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=None,
                anchor_coef=0., train_actor=True):
-    histories,latents,old_logp,advantages,returns=data
-    actor_steps=critic_steps=0;last_kl=0.;stopped=False;anchor_loss=None
+    histories,latents,old_logp,advantages,returns,*rollout_labels=data
+    adaptive=getattr(args,'kl_control','early_stop')=='adaptive_lr'
+    actor_steps=critic_steps=0;last_kl=0.;stopped=False;anchor_loss=None;kls=[]
     for _ in range(args.epochs if train_actor else 0):
         for indices in torch.randperm(len(histories),device=args.device).split(args.batch_size):
             check_stop()
@@ -321,11 +360,24 @@ def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=N
             adv=advantages[indices]
             policy_loss=-torch.minimum(ratio*adv,ratio.clamp(.8,1.2)*adv).mean()
             value_loss=(model.critic(x).squeeze(-1)-target).square().mean()
-            last_kl=float(kl.detach())
-            if last_kl>args.target_kl:stopped=True;break
+            last_kl=float(kl.detach());kls.append(last_kl)
+            if adaptive:
+                # Rudin et al. 2021 (rsl_rl): adapt the actor rate from the
+                # measured KL instead of discarding the rest of the batch. A
+                # hard stop remains only as a guard against runaway steps.
+                for group in actor_optimizer.param_groups:
+                    if last_kl>2*args.target_kl:group['lr']=max(args.min_actor_lr,group['lr']/1.5)
+                    elif last_kl<args.target_kl/2:group['lr']=min(args.max_actor_lr,group['lr']*1.5)
+                if last_kl>args.kl_guard*args.target_kl:stopped=True;break
+            elif last_kl>args.target_kl:stopped=True;break
             sample=dist.rsample();entropy=-model.log_probability(dist,sample).mean()
             actor_loss=policy_loss-args.entropy*entropy
-            if anchor is not None and anchor_coef>0:
+            if rollout_labels and anchor_coef>0:
+                # On-policy anchor: teacher labels at the states this rollout
+                # visited, reusing this minibatch's actor mean.
+                anchor_loss=(dist.loc.tanh()-rollout_labels[0][indices]).square().mean()
+                actor_loss=actor_loss+anchor_coef*anchor_loss
+            elif anchor is not None and anchor_coef>0:
                 bank_x,bank_y=anchor
                 chosen=torch.randint(len(bank_x),(len(indices),),device=args.device)
                 anchor_loss=(model.actor(bank_x[chosen]).tanh()-bank_y[chosen]).square().mean()
@@ -342,9 +394,12 @@ def ppo_update(model, data, actor_optimizer, critic_optimizer, args, *, anchor=N
         loss=(model.critic(histories[indices]).squeeze(-1)-returns[indices]).square().mean()
         critic_optimizer.zero_grad();loss.backward();torch.nn.utils.clip_grad_norm_(model.critic.parameters(),.5)
         critic_optimizer.step();critic_steps+=1
-    return dict(actor_steps=actor_steps,critic_steps=critic_steps,last_kl=last_kl,kl_early_stop=stopped,
+    report=dict(actor_steps=actor_steps,critic_steps=critic_steps,last_kl=last_kl,kl_early_stop=stopped,
                 anchor_coef=anchor_coef,anchor_mse=None if anchor_loss is None else float(anchor_loss.detach()),
                 critic_warmup=not train_actor)
+    if adaptive:
+        report.update(mean_kl=sum(kls)/len(kls) if kls else 0.,actor_lr=actor_optimizer.param_groups[0]['lr'])
+    return report
 
 
 def train(args):
@@ -383,7 +438,10 @@ def train(args):
             batch_size=args.batch_size,epochs=args.epochs,target_kl=args.target_kl,
             bc_target='policy_inverse_action_mapping',bc_coef=args.bc_coef,
             bc_decay_updates=args.bc_decay_updates,critic_warmup=args.critic_warmup,
-            minibatch_permutation='fresh_each_epoch'),
+            minibatch_permutation='fresh_each_epoch',dagger_rounds=args.dagger_rounds,
+            anchor_source=args.anchor_source,bc_floor=args.bc_floor,kl_control=args.kl_control,
+            **(dict(min_actor_lr=args.min_actor_lr,max_actor_lr=args.max_actor_lr,kl_guard=args.kl_guard)
+               if args.kl_control=='adaptive_lr' else {})),
         validation_seed=args.validation_seed,comparison_seed=args.test_seed,
         comparison_selects_weights=False,live_ksp_validated=False,
         limitations=['No actual KSP qualification','Local skill scores do not measure complete missions',
@@ -422,7 +480,8 @@ def train(args):
     try:
         ancestry['phase']='teacher_warmup'
         anchor=fit_teacher(model,args.task,parent,args,log)
-        if not args.bc_coef:anchor=None
+        if not args.bc_coef or args.anchor_source=='rollout':anchor=None
+        rollout_teacher=(lambda env,parent=parent:teacher_action(env,parent)) if args.anchor_source=='rollout' else None
         del parent
         validate('teacher_warmup',0)
         env=make_env(args.task,args.worlds,args.device,args.seed+300000,orbital_version=args.orbital_version)
@@ -434,7 +493,8 @@ def train(args):
         # returns; the actor and its selection ancestry are unchanged.
         for update in range(1-args.critic_warmup,args.updates+1):
             check_stop();tick=time.monotonic()
-            data,rollout=collect_rollout(model,env,history,args)
+            data,rollout=collect_rollout(model,env,history,args,
+                                         teacher=rollout_teacher if update>0 else None)
             rollout_successes,rollout_episodes=rollout['successes'],rollout['episodes']
             saturation,explained=rollout['latent_saturation'],rollout['explained_variance']
             stats=ppo_update(model,data,
@@ -513,6 +573,14 @@ def main(argv=None):
     p.add_argument('--initial-std',type=float,default=.15)
     p.add_argument('--bc-coef',type=float,default=1.,help='initial teacher-anchor weight during PPO')
     p.add_argument('--bc-decay-updates',type=int,help='anchor decays linearly to zero (default updates/2)')
+    p.add_argument('--bc-floor',type=float,default=0.,help='anchor weight never decays below this')
+    p.add_argument('--anchor-source',choices=['bank','rollout'],default='bank',
+                   help='bank: fixed teacher trajectories; rollout: teacher labels at PPO-visited states')
+    p.add_argument('--dagger-rounds',type=int,default=0,help='student-rollout DAgger rounds after BC')
+    p.add_argument('--kl-control',choices=['early_stop','adaptive_lr'],default='early_stop')
+    p.add_argument('--min-actor-lr',type=float,default=1e-7)
+    p.add_argument('--max-actor-lr',type=float,default=1e-3)
+    p.add_argument('--kl-guard',type=float,default=8.,help='adaptive mode still stops above this multiple of target KL')
     p.add_argument('--actor-lr',type=float,default=1e-5)
     p.add_argument('--critic-lr',type=float,default=3e-4)
     p.add_argument('--entropy',type=float,default=.001)
@@ -531,6 +599,12 @@ def main(argv=None):
         p.error('invalid action mapping or initial std')
     if not math.isfinite(args.bc_coef) or args.bc_coef<0 or args.bc_decay_updates<1:
         p.error('invalid behavior-cloning anchor')
+    if not math.isfinite(args.bc_floor) or not 0<=args.bc_floor<=args.bc_coef or args.dagger_rounds<0:
+        p.error('invalid anchor floor or DAgger rounds')
+    if args.anchor_source=='rollout' and not args.bc_coef:
+        p.error('a rollout anchor needs a positive --bc-coef')
+    if not (0<args.min_actor_lr<=args.actor_lr<=args.max_actor_lr) or args.kl_guard<=2:
+        p.error('invalid adaptive learning-rate bounds')
     if args.task=='orbital' and (args.eval_worlds%17 or args.test_worlds%17):
         p.error('orbital evaluation banks must be balanced multiples of all 17 bodies')
     if not all(math.isfinite(x) and x>0 for x in [args.actor_lr,args.critic_lr,args.target_kl]) or not math.isfinite(args.entropy) or args.entropy<0:
