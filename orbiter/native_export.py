@@ -137,10 +137,104 @@ def write_policy(path, kind, model_zip, metadata_path, vehicle_profile=None):
     return header
 
 
-def export_release(project_root, output_directory):
+SEQUENCE_MAGIC = b"ORBSEQ1\n"
+SEQUENCE_KINDS = {
+    "generalized_ascent": ("ascent", 56, 2),
+    "generalized_capture": ("orbital", 35, 3),
+}
+
+
+def generalized_contract(kind):
+    """Simulator constants the C# builders must use, read from the Python code."""
+    if kind == "generalized_ascent":
+        from .generalized_aero_env import OBSERVATIONS, TASK
+        from .generalized_env import MAX_STAGES
+        from .train_architectures import make_env
+
+        env = make_env("ascent", 1, "cpu", 0)
+        e = env.envelope
+        values = dict(mu=env.mu, radius=env.radius, rotation_period=env.rotation_period,
+                      atmosphere_depth=env.atmosphere_depth, max_time=env.max_time,
+                      orbit_tolerance=env.orbit_tolerance, control_dt=env.control_dt,
+                      max_stages=MAX_STAGES, observations=OBSERVATIONS)
+        for name in ("payload", "target", "attitude_rate", "attitude_tau",
+                     "drag_area_per_tonne", "drag_alpha_area_per_tonne",
+                     "lift_area_per_tonne", "isp", "sea_level_isp_ratio",
+                     "stage_dry_fraction", "initial_twr", "upper_twr"):
+            values[f"{name}_min"] = getattr(e, f"{name}_min")
+            values[f"{name}_max"] = getattr(e, f"{name}_max")
+        values["stages_max"] = e.stages_max
+        return TASK, values
+    if kind == "generalized_capture":
+        from .batched_capture import VERSIONS
+
+        task, observations = VERSIONS[2]
+        # Rules from BatchedCapture.reset/_telemetry (tests pin them to the code).
+        return task, dict(observations=observations, control_dt_over_T=0.01, max_time_over_T=4.0,
+                          authority_gravity_limit=32.0, plane_tolerance_deg=5.0, success_hold_steps=2.0,
+                          arrival_radius_ratio=1.04, altitude_floor=50000.0, altitude_atmosphere_margin=20000.0,
+                          altitude_radius_fraction=0.1, altitude_scale_min=0.9, altitude_scale_max=1.2,
+                          tolerance_cap=5000.0, tolerance_fraction=0.15, safe_margin=1000.0,
+                          mass_min=300.0, mass_max=30000.0, thrust_accel_min=0.5, thrust_accel_max=30.0,
+                          isp_min=280.0, isp_max=450.0, dry_fraction_min=0.05, dry_fraction_max=0.4,
+                          vinf_fraction_min=0.2, vinf_fraction_max=0.7)
+    raise ValueError(f"unknown generalized policy kind {kind}")
+
+
+def write_sequence_policy(path, kind, checkpoint):
+    """Actor tensors of a SequencePolicy as named little-endian float32 arrays."""
+    from .train_architectures import load
+
+    benchmark, observations, actions = SEQUENCE_KINDS[kind]
+    model, metadata = load(Path(checkpoint))
+    if metadata["contract"]["benchmark"] != benchmark:
+        raise ValueError(f"{kind} needs a {benchmark} architecture checkpoint")
+    spec = model.spec
+    if (spec["observations"], spec["actions"]) != (observations, actions):
+        raise ValueError("checkpoint observation/action sizes differ from the contract")
+    if spec["architecture"] not in ("gru", "lstm") and not spec["architecture"].startswith("mlp"):
+        raise ValueError("native export supports MLP, GRU and LSTM sequence policies")
+    task, constants = generalized_contract(kind)
+    header = {"kind": kind, "source_sha256": sha256(checkpoint), "simulator_task": task,
+              "architecture": spec["architecture"], "observations": observations,
+              "actions": actions, "context": spec["context"],
+              "action_transform": spec.get("action_transform", "tanh"),
+              "action_scale": repr(float(spec.get("action_scale", 1.0))),
+              "deadzone": repr(float(spec.get("deadzone", 0.0)))}
+    for key, value in constants.items():
+        if not math.isfinite(float(value)):
+            raise ValueError(f"nonfinite contract value {key}")
+        header[f"contract.{key}"] = repr(float(value))
+    tensors = [(name, value.detach().cpu().numpy().astype(np.float32))
+               for name, value in model.state_dict().items() if name.startswith("actor.")]
+    text = "".join(f"{key}={value}\n" for key, value in header.items()).encode()
+    blob = io.BytesIO()
+    blob.write(SEQUENCE_MAGIC)
+    blob.write(struct.pack("<i", len(text)))
+    blob.write(text)
+    blob.write(struct.pack("<i", len(tensors)))
+    for name, array in tensors:
+        encoded = name.encode()
+        blob.write(struct.pack("<i", len(encoded)))
+        blob.write(encoded)
+        blob.write(struct.pack("<i", array.ndim))
+        blob.write(struct.pack(f"<{array.ndim}i", *array.shape))
+        blob.write(np.ascontiguousarray(array, dtype="<f4").tobytes())
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_bytes(blob.getvalue())
+    return header
+
+
+GENERALIZED_MODELS = {
+    "generalized_ascent": "models/generalized_ascent_gru.pt",
+    "generalized_capture": "models/generalized_capture_lstm.pt",
+}
+
+
+def export_release(project_root, output_directory, *, generalized=True):
     root = Path(project_root)
     out = Path(output_directory)
-    return {
+    headers = {
         "ascent": write_policy(out / "ascent.policy", "ascent",
                                root / "models/transfer_ascent_ppo.zip",
                                root / "models/transfer_ascent_ppo.metadata.json",
@@ -149,6 +243,10 @@ def export_release(project_root, output_directory):
                                 root / "models/moon_capture.zip",
                                 root / "models/moon_capture.metadata.json"),
     }
+    if generalized:
+        for kind, checkpoint in GENERALIZED_MODELS.items():
+            headers[kind] = write_sequence_policy(out / f"{kind}.policy", kind, root / checkpoint)
+    return headers
 
 
 def main():

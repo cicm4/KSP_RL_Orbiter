@@ -147,6 +147,50 @@ lower atmosphere. The [Mun](validation/missions/native_addon_mun.json) and
 [Minmus](validation/missions/native_addon_minmus.json) records link the full
 logs and policy hashes. They are individual demonstrations, not a success rate.
 
+#### Any rocket (generalized policies)
+
+Rockets other than the trained OrbiterRL Transfer, and the **Kerbin orbit**
+destination, are flown by the generalized policies: the GRU ascent
+(`models/generalized_ascent_gru.pt`, 56 inputs) and the LSTM all-body capture
+(`models/generalized_capture_lstm.pt`, 35 inputs) from the matched-architecture
+campaign. In simulation they succeeded on 492/512 unseen two-to-three-stage and
+511/512 four-stage rockets, and on 401/544 capture cases across the stock bodies.
+`orbiter/native/Ksp/CraftAnalyzer.cs` reads the rocket on the pad into the
+training description: up to four sequential liquid stages (engines that ignite
+together and drop with their own tanks), vacuum thrust, vacuum and sea-level Isp,
+and payload. Solid, jet and ion engines, parallel boosters and fuel lines are
+refused, as are rockets with a launch thrust-to-weight below 1.05 or under
+3,800 m/s of vacuum delta-v. Values outside the training ranges produce
+warnings. Drag and lift areas are estimated by scaling the coefficients fitted
+to an actual OrbiterRL Terrier flight by the rocket's own KSP drag-cube frontal
+and side areas, then clamped to the training range; this is an estimate, not a
+fit. The commanded pitch passes through the simulator's rate-limited servo
+(8°/s, τ 0.8 s) before the attitude controller tracks it. Stages fire when the
+running engines are dry, including during node burns. The all-body capture trained only with spacecraft whose dry mass is at most
+40% of their mass, so at least about 2.5 km/s on board. A real upper stage
+often reaches the Mun with far less: the parachute-less Transfer test craft
+arrived at 86% dry mass with 503 m/s and, flown by the all-body policy, dithered
+around a 41 x 62 km orbit until its fuel ran out. Arrivals above 44% dry mass at
+the Mun or Minmus are therefore flown by the validated Mun/Minmus capture policy,
+which trained at 79% dry mass; elsewhere such a mission is refused. The all-body
+capture uses the simulator's dimensionless decision interval (1% of the target
+orbit's time scale), its per-body altitude band, and, as in training, thrusts
+while the engine turns toward each command. **Run** also resumes a mission in
+flight, from a stable Kerbin orbit, the transfer coast, or the approach.
+
+In actual KSP 1.12.5, with no Python or kRPC process, the generalized ascent
+put the OrbiterRL Transfer into an 81.2 x 100.7 km orbit (100 km goal; this
+first run used uncalibrated aero inputs at the top of their range) and the
+lighter OrbiterRL Terrier into a 92.0 x 112.8 km orbit (110 km goal, 359 kg of
+propellant left). A parachute-less Transfer variant, which the validated pair
+does not fly, went from the pad through the generalized ascent (80.5 x 105.3 km
+parking orbit), the transfer and a capture flown by the Mun/Minmus policy into
+a 49.5 x 54.8 km Mun orbit. All three passed a full unpowered revolution. The
+OrbiterRL Liquid was refused before launch for 3,655 m/s of delta-v. The
+[generalized flight manifest](validation/generalized/manifest.json) links every
+log, including the failed all-body capture described above. These are individual
+demonstrations with three closely related 1.25 m rockets, not a success rate.
+
 The earlier Python/kRPC toolbar bridge, validated by the flights above, is kept
 as evidence in `validation/missions/ksp_bridge_frontend_0.1.cs`.
 
@@ -155,7 +199,7 @@ as evidence in `validation/missions/ksp_bridge_frontend_0.1.cs`.
 Package the compiled addon with the two validated policies:
 
 ```sh
-.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.2.0.zip
+.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.3.0.zip
 ```
 
 The ZIP contains only `GameData/OrbiterAutopilot`: the DLL, `Policies/`,

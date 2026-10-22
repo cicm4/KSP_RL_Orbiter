@@ -1,0 +1,102 @@
+{
+  "task": "matched_history_architecture_research_v2",
+  "benchmark": "ascent",
+  "comparison": {
+    "task": "ascent",
+    "seed": 5600505,
+    "episodes": 512,
+    "successes": 492,
+    "success_rate": 0.9609375,
+    "macro_body_success_rate": 0.9609375,
+    "per_body": {
+      "Kerbin": {
+        "episodes": 512,
+        "successes": 492,
+        "success_rate": 0.9609375,
+        "failure_counts": {
+          "4": 18,
+          "5": 2
+        }
+      }
+    },
+    "live_ksp_validated": false,
+    "scope": "Kerbin planar launch surrogate",
+    "reason_codes": {
+      "1": "success",
+      "2": "impact",
+      "3": "escape",
+      "4": "fuel",
+      "5": "timeout"
+    }
+  },
+  "selected_ancestry": {
+    "seed": 902,
+    "phase": "ppo_128",
+    "update": 128,
+    "selected_update": 128,
+    "upstream": {
+      "sha256": "c78bf65a1ca443bb688f436d4f6040e8cd45099f907d4db8d9cfcc86b9185059",
+      "usage": "frozen_action_teacher"
+    },
+    "transitions": 16777216
+  },
+  "interrupted": false,
+  "live_ksp_validated": false,
+  "final_tests_select_checkpoint": false,
+  "elapsed_s": 899.540125363972,
+  "four_stage": {
+    "task": "ascent",
+    "seed": 5600505,
+    "episodes": 512,
+    "successes": 511,
+    "success_rate": 0.998046875,
+    "macro_body_success_rate": 0.998046875,
+    "per_body": {
+      "Kerbin": {
+        "episodes": 512,
+        "successes": 511,
+        "success_rate": 0.998046875,
+        "failure_counts": {
+          "5": 1
+        }
+      }
+    },
+    "live_ksp_validated": false,
+    "scope": "Kerbin planar launch surrogate",
+    "reason_codes": {
+      "1": "success",
+      "2": "impact",
+      "3": "escape",
+      "4": "fuel",
+      "5": "timeout"
+    }
+  },
+  "parent_reference": {
+    "task": "ascent",
+    "seed": 5600505,
+    "episodes": 512,
+    "successes": 487,
+    "success_rate": 0.951171875,
+    "macro_body_success_rate": 0.951171875,
+    "per_body": {
+      "Kerbin": {
+        "episodes": 512,
+        "successes": 487,
+        "success_rate": 0.951171875,
+        "failure_counts": {
+          "4": 14,
+          "5": 11
+        }
+      }
+    },
+    "live_ksp_validated": false,
+    "scope": "Kerbin planar launch surrogate",
+    "reason_codes": {
+      "1": "success",
+      "2": "impact",
+      "3": "escape",
+      "4": "fuel",
+      "5": "timeout"
+    }
+  }
+}

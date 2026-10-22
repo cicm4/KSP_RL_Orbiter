@@ -34,7 +34,7 @@ ASSEMBLIES = (
     "UnityEngine.UI.dll",
 )
 ADDON = "GameData/OrbiterAutopilot"
-POLICIES = ("ascent.policy", "capture.policy")
+POLICIES = ("ascent.policy", "capture.policy", "generalized_ascent.policy", "generalized_capture.policy")
 
 
 def managed_directory(ksp_root):

@@ -14,16 +14,17 @@ namespace OrbiterRL
     public sealed class OrbiterAutopilot : MonoBehaviour
     {
         private const string InputLock = "OrbiterAutopilotWindow";
-        private static readonly string[] Destinations = { "Mun", "Minmus" };
-        private static Policy ascentPolicy, capturePolicy;
+        private static readonly string[] Destinations = { "Kerbin orbit", "Mun", "Minmus" };
+        private static MissionPolicies policies;
         private static string loadError;
 
         private ApplicationLauncherButton button;
         private Texture2D icon;
         private Rect window = new Rect(0, 100, 360, 300);
         private bool visible;
-        private int destination;
+        private int destination = 1, shownDestination = -1;
         private string altitudeKm = "50";
+        private string craftSummary = "";
         private GUIStyle wrapped;
         private readonly Runner runner = new Runner();
         private Mission mission;
@@ -38,21 +39,58 @@ namespace OrbiterRL
 
         private static void LoadPolicies()
         {
-            if (ascentPolicy != null || loadError != null) return;
+            if (policies != null || loadError != null) return;
             try
             {
-                string policies = Path.Combine(Folder, "Policies");
-                ascentPolicy = Policy.Load(Path.Combine(policies, "ascent.policy"));
-                capturePolicy = Policy.Load(Path.Combine(policies, "capture.policy"));
-                new AscentContract(ascentPolicy);
-                Debug.Log("[OrbiterAutopilot] Loaded policies " + ascentPolicy.Sha256 + " / " + capturePolicy.Sha256);
+                string folder = Path.Combine(Folder, "Policies");
+                MissionPolicies loaded = new MissionPolicies
+                {
+                    Ascent = Policy.Load(Path.Combine(folder, "ascent.policy")),
+                    Capture = Policy.Load(Path.Combine(folder, "capture.policy")),
+                    GeneralAscent = SequencePolicy.Load(Path.Combine(folder, "generalized_ascent.policy")),
+                    GeneralCapture = SequencePolicy.Load(Path.Combine(folder, "generalized_capture.policy")),
+                };
+                new AscentContract(loaded.Ascent);
+                new GeneralizedAscentContract(loaded.GeneralAscent);
+                policies = loaded;
+                Debug.Log("[OrbiterAutopilot] Loaded policies " + loaded.Ascent.Sha256 + " / " + loaded.Capture.Sha256
+                          + " / " + loaded.GeneralAscent.Sha256 + " / " + loaded.GeneralCapture.Sha256);
             }
             catch (Exception error)
             {
-                ascentPolicy = capturePolicy = null;
                 loadError = "Orbiter policies are missing or damaged: " + error.Message;
                 Debug.LogError("[OrbiterAutopilot] " + loadError);
             }
+        }
+
+        /// <summary>Altitude range (km) for a destination; moons depend on the policy that will fly.</summary>
+        private static void Range(string destination, bool trainedCraft, out double low, out double high)
+        {
+            if (destination == "Kerbin orbit")
+            {
+                low = policies.GeneralAscent.Constant("target_min") / 1000;
+                high = policies.GeneralAscent.Constant("target_max") / 1000;
+                return;
+            }
+            if (trainedCraft) { low = 40; high = 60; return; }
+            CelestialBody body = FlightGlobals.GetBodyByName(destination);
+            GeneralizedCaptureConfig.AltitudeBand(policies.GeneralCapture, body.Radius,
+                body.atmosphere ? body.atmosphereDepth : 0.0, out low, out high);
+            low = Math.Ceiling(low / 1000);
+            high = Math.Floor(high / 1000);
+        }
+
+        private static MissionPlan Plan(string destination, double altitudeMeters)
+        {
+            MissionPlan plan = new MissionPlan();
+            if (destination == "Kerbin orbit" || destination == "Orbit" || destination == "Kerbin")
+                plan.OrbitAltitude = altitudeMeters;
+            else
+            {
+                plan.Target = FlightGlobals.GetBodyByName(destination);
+                plan.TargetAltitude = altitudeMeters;
+            }
+            return plan;
         }
 
         private void Awake()
@@ -102,14 +140,18 @@ namespace OrbiterRL
         {
             if (runner.Running) return "A mission is already running";
             if (loadError != null) return loadError;
-            CelestialBody body = FlightGlobals.GetBodyByName(target);
-            if (body == null) return "Unknown destination " + target;
-            if (!(altitudeMeters >= 40000 && altitudeMeters <= 60000)) return "Choose an altitude from 40 to 60 km";
-            string problem = new Mission(ascentPolicy, capturePolicy, body, altitudeMeters, null)
-                .CheckPreflight(FlightGlobals.ActiveVessel);
+            MissionPlan plan = Plan(target, altitudeMeters);
+            if (target != "Kerbin orbit" && target != "Orbit" && target != "Kerbin" && plan.Target == null)
+                return "Unknown destination " + target;
+            Mission check = new Mission(policies, plan, null);
+            string problem = check.CheckPreflight(FlightGlobals.ActiveVessel);
             if (problem != null) return problem;
+            double low, high;
+            Range(plan.Target == null ? "Kerbin orbit" : plan.Target.bodyName, check.Validated, out low, out high);
+            if (!(altitudeMeters >= low * 1000 - 1 && altitudeMeters <= high * 1000 + 1))
+                return string.Format(CultureInfo.InvariantCulture, "Choose an altitude from {0:0} to {1:0} km", low, high);
             log = new MissionLog(Path.Combine(Folder, "Logs"));
-            mission = new Mission(ascentPolicy, capturePolicy, body, altitudeMeters, log);
+            mission = new Mission(policies, plan, log);
             outcome = null;
             runner.Start(mission.Run());
             Debug.Log("[OrbiterAutopilot] Mission started: " + target + " " + altitudeMeters + " m; log " + log.Path);
@@ -155,10 +197,23 @@ namespace OrbiterRL
             if (runner.Running || !visible || Time.realtimeSinceStartup < nextCheck) return;
             nextCheck = Time.realtimeSinceStartup + 1f;
             if (loadError != null) { readiness = loadError; return; }
-            CelestialBody body = FlightGlobals.GetBodyByName(Destinations[destination]);
-            string problem = body == null ? "Unknown destination"
-                : new Mission(ascentPolicy, capturePolicy, body, 50000, null).CheckPreflight(FlightGlobals.ActiveVessel);
-            readiness = problem ?? "Ready on the launchpad";
+            string name = Destinations[destination];
+            double low = 0, high = 0;
+            Mission check = new Mission(policies, Plan(name, name == "Kerbin orbit" ? 100000 : 0), null);
+            string problem = check.CheckPreflight(FlightGlobals.ActiveVessel);
+            bool trained = problem == null && check.Validated;
+            Range(name, trained, out low, out high);
+            if (shownDestination != destination)
+            {
+                // Suggest the middle of the range whenever the destination changes.
+                altitudeKm = Math.Round((low + high) / 2).ToString(CultureInfo.InvariantCulture);
+                shownDestination = destination;
+            }
+            if (problem != null && problem.StartsWith("Choose a")) problem = null; // altitude is checked on Run
+            readiness = problem ?? (check.ResumeFrom == null ? "Ready on the launchpad"
+                : "Ready to continue the mission from " + (check.ResumeFrom == "transfer" ? "this orbit"
+                    : check.ResumeFrom == "coast" ? "the transfer coast" : "the approach"));
+            craftSummary = Summary(check, low, high);
         }
 
         private void OnGUI()
@@ -179,7 +234,7 @@ namespace OrbiterRL
         private void DrawWindow(int id)
         {
             Vessel vessel = FlightGlobals.ActiveVessel;
-            GUILayout.Label("Learned launch, transfer and capture · OrbiterRL Transfer rocket", wrapped);
+            GUILayout.Label("Learned launch, transfer and capture", wrapped);
             GUILayout.Label(vessel == null ? "No active vessel" : vessel.vesselName + " · " + vessel.mainBody.bodyName, wrapped);
             bool running = runner.Running;
             GUILayout.Space(6);
@@ -188,11 +243,11 @@ namespace OrbiterRL
             GUILayout.BeginHorizontal();
             GUILayout.Label("Orbit altitude", GUILayout.Width(105));
             altitudeKm = GUILayout.TextField(altitudeKm, 6, GUILayout.Width(75));
-            GUILayout.Label("km  (40–60)");
+            GUILayout.Label("km");
             GUILayout.EndHorizontal();
             double altitude;
             bool valid = double.TryParse(altitudeKm, NumberStyles.Float, CultureInfo.InvariantCulture, out altitude)
-                         && altitude >= 40 && altitude <= 60;
+                         && altitude > 0;
             GUI.enabled = true;
             GUILayout.Space(8);
             GUILayout.BeginHorizontal();
@@ -206,7 +261,7 @@ namespace OrbiterRL
             if (GUILayout.Button("Stop", GUILayout.Height(30))) StopMission("Stop button");
             GUI.enabled = true;
             GUILayout.EndHorizontal();
-            if (!valid) GUILayout.Label("Choose an altitude from 40 to 60 km.", wrapped);
+            if (!valid) GUILayout.Label("Enter an orbit altitude in km.", wrapped);
             GUILayout.Space(8);
             if (running && mission != null)
             {
@@ -217,11 +272,26 @@ namespace OrbiterRL
             {
                 if (outcome != null) GUILayout.Label(outcome, wrapped);
                 GUILayout.Label(readiness, wrapped);
+                if (craftSummary.Length > 0) GUILayout.Label(craftSummary, wrapped);
             }
             GUILayout.Space(5);
             GUILayout.Label("Run launches the active rocket from the pad and verifies a full orbit after capture. Stop releases the controls.", wrapped);
             if (GUILayout.Button("Close")) { HideWindow(); if (button != null) button.SetFalse(false); }
             GUI.DragWindow(new Rect(0, 0, window.width, 25));
+        }
+
+        private static string Summary(Mission check, double low, double high)
+        {
+            string range = string.Format(CultureInfo.InvariantCulture, "Altitude range {0:0}–{1:0} km. ", low, high);
+            if (check.Validated) return range + "Trained OrbiterRL Transfer rocket: flown by the validated policies.";
+            CraftReport report = check.Report;
+            if (report == null || report.Craft == null) return range;
+            CraftSpec c = report.Craft;
+            string text = range + string.Format(CultureInfo.InvariantCulture,
+                "Any-rocket policies (simulation-tested): {0} stage{1}, {2:0.0} t, {3:0} m/s, launch TWR {4:0.00}.",
+                c.Stages.Length, c.Stages.Length == 1 ? "" : "s", c.InitialMass / 1000, c.IdealDeltaV, report.PadTwr);
+            if (report.Warnings.Count > 0) text += " Note: " + report.Warnings[0] + ".";
+            return text;
         }
 
         private static string HumanPhase(string phase)
@@ -310,7 +380,9 @@ namespace OrbiterRL
     /// <summary>
     /// Opt-in unattended validation: KSP -orbiter-autotest Mun 50 [save] loads
     /// saves/OrbiterRL/&lt;save&gt;.sfs (default OrbiterRL-pad-transfer), flies one
-    /// mission and writes Logs/autotest-result.txt. Without the flag this does nothing.
+    /// mission and writes Logs/autotest-result.txt. "fresh [craft]" instead launches
+    /// a craft (default the generated OrbiterRL Transfer) from the Space Center.
+    /// Destination "Orbit" stops in Kerbin orbit. Without the flag this does nothing.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.MainMenu, true)]
     public sealed class Autotest : MonoBehaviour
@@ -322,7 +394,7 @@ namespace OrbiterRL
                 string[] args = Environment.GetCommandLineArgs();
                 int index = Array.IndexOf(args, "-orbiter-autotest");
                 if (index < 0) return null;
-                string[] rest = new string[Math.Max(0, Math.Min(3, args.Length - index - 1))];
+                string[] rest = new string[Math.Max(0, Math.Min(4, args.Length - index - 1))];
                 Array.Copy(args, index + 1, rest, 0, rest.Length);
                 return rest;
             }
@@ -358,10 +430,17 @@ namespace OrbiterRL
                 yield return new WaitForSeconds(0.1f);
             yield return new WaitForSeconds(3f);
             game = HighLogic.CurrentGame;
-            string craft = Path.Combine(KSPUtil.ApplicationRootPath, "Ships/VAB/" + CraftInstaller.CraftName + ".craft");
+            string name = args.Length > 3 ? args[3] : CraftInstaller.CraftName;
+            string craft = Path.Combine(KSPUtil.ApplicationRootPath, "saves/OrbiterRL/Ships/VAB/" + name + ".craft");
+            if (!File.Exists(craft)) craft = Path.Combine(KSPUtil.ApplicationRootPath, "Ships/VAB/" + name + ".craft");
             ConfigNode node = ConfigNode.Load(craft);
             if (node == null) { Result("error: generated craft missing: " + craft); yield break; }
             VesselCrewManifest crew = game.CrewRoster.DefaultCrewForVessel(node, VesselCrewManifest.FromConfigNode(node), true, true);
+            // Test saves can have every kerbal assigned; hire into empty seats so the pod is crewed.
+            foreach (PartCrewManifest part in crew.PartManifests)
+                for (int seat = 0; part.partCrew != null && seat < part.partCrew.Length; seat++)
+                    if (string.IsNullOrEmpty(part.partCrew[seat]))
+                        part.AddCrewToSeat(game.CrewRoster.GetNextOrNewKerbal(ProtoCrewMember.KerbalType.Crew), seat);
             FlightDriver.StartWithNewLaunch(craft, game.flagURL, "LaunchPad", crew);
         }
 
@@ -377,6 +456,14 @@ namespace OrbiterRL
             yield return new WaitForSeconds(3f);
             string problem = addon.StartMission(target, altitude);
             if (problem != null) { Result("preflight_failed: " + problem); yield break; }
+            // Save resumable checkpoints so later tests can start mid-mission.
+            addon.Current.PhaseChanged += phase =>
+            {
+                if (phase != "capture_coast" && phase != "transfer_planning") return;
+                string name = "autotest-" + target + "-" + phase;
+                GamePersistence.SaveGame(HighLogic.CurrentGame.Updated(), name, HighLogic.SaveFolder, SaveMode.OVERWRITE);
+                Debug.Log("[OrbiterAutopilot] autotest saved " + name);
+            };
             Result("running");
             while (addon.Running) yield return new WaitForSeconds(1f);
             Result((addon.Current != null && addon.Current.Succeeded ? "succeeded: " : "failed: ") + addon.Outcome);

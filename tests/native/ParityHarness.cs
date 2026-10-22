@@ -23,6 +23,14 @@ public static class ParityHarness
     private static IEnumerable<double> Of(V3 v) { return new[] { v.X, v.Y, v.Z }; }
 
     private static readonly Dictionary<string, Policy> Policies = new Dictionary<string, Policy>();
+    private static readonly Dictionary<string, SequencePolicy> Sequences = new Dictionary<string, SequencePolicy>();
+
+    private static SequencePolicy LoadSequence(string path)
+    {
+        SequencePolicy policy;
+        if (!Sequences.TryGetValue(path, out policy)) Sequences[path] = policy = SequencePolicy.Load(path);
+        return policy;
+    }
 
     private static Policy LoadPolicy(string path)
     {
@@ -164,6 +172,81 @@ public static class ParityHarness
                 System.IO.File.WriteAllText(output, CraftBuilder.MakeTransfer(
                     System.IO.File.ReadAllText(one), System.IO.File.ReadAllText(science)), new System.Text.UTF8Encoding(false));
                 return "0";
+            }
+            case "seq_act":
+            {
+                SequencePolicy policy = LoadSequence(S());
+                float[][] window = new float[policy.Context][];
+                for (int t = 0; t < policy.Context; t++)
+                {
+                    window[t] = new float[policy.Features];
+                    for (int i = 0; i < policy.Features; i++) window[t][i] = (float)D();
+                }
+                return Format(policy.Act(window));
+            }
+            case "history":
+            {
+                // context observations actions steps, then per step: obs, action-or-none flag + action
+                int context = (int)D(), observations = (int)D(), actions = (int)D(), steps = (int)D();
+                PolicyHistory history = new PolicyHistory(context, observations, actions);
+                for (int k = 0; k < steps; k++)
+                {
+                    float[] obs = new float[observations];
+                    for (int i = 0; i < observations; i++) obs[i] = (float)D();
+                    double[] action = null;
+                    if (D() != 0) { action = new double[actions]; for (int i = 0; i < actions; i++) action[i] = D(); }
+                    history.Append(obs, action);
+                }
+                List<double> flat = new List<double>();
+                foreach (float[] token in history.Window) foreach (float x in token) flat.Add(x);
+                return Format(flat);
+            }
+            case "gen_ascent_obs":
+            {
+                GeneralizedAscentContract contract = new GeneralizedAscentContract(LoadSequence(S()));
+                int n = (int)D();
+                StageSpec[] stages = new StageSpec[n];
+                for (int i = 0; i < n; i++)
+                    stages[i] = new StageSpec { DryMass = D(), FuelMass = D(), ThrustVac = D(), IspVac = D(), IspSl = D() };
+                CraftSpec craft = new CraftSpec
+                {
+                    Stages = stages, Payload = D(), DragArea = D(), DragAlphaArea = D(), LiftArea = D(),
+                    AttitudeRate = D(), AttitudeTau = D(), Target = D(),
+                };
+                GeneralizedAscentTelemetry t = new GeneralizedAscentTelemetry
+                {
+                    Altitude = D(), VerticalSpeed = D(), HorizontalSpeed = D(), Apoapsis = D(), Periapsis = D(),
+                    Energy = D(), DynamicPressure = D(), StageFuel = D(), Mass = D(), Pitch = D(), Throttle = D(),
+                    Time = D(), AvailableThrust = D(), Stage = (int)D(),
+                };
+                return Format(contract.Observation(craft, t).Select(x => (double)x));
+            }
+            case "gen_capture":
+            {
+                SequencePolicy policy = LoadSequence(S());
+                string body = S();
+                double mu = D(), radius = D(), atmosphere = D(), soi = D(), altitude = D();
+                GeneralizedCaptureConfig c = GeneralizedCaptureConfig.For(policy, body, mu, radius, atmosphere, soi, altitude);
+                GeneralizedCaptureTelemetry d = new GeneralizedCaptureTelemetry
+                {
+                    R = V(), V = V(), Direction = V(), GoalNormal = V(), Mass = D(), InitialMass = D(),
+                    DryMass = D(), Thrust = D(), Isp = D(), Time = D(),
+                };
+                double[] action = { D(), D(), D() };
+                V3 direction;
+                double throttle = GeneralizedCaptureContract.Decode(c, d, action, out direction);
+                double plane;
+                bool inBand = GeneralizedCaptureContract.InBand(c, d.R, d.V, d.GoalNormal, out plane);
+                return Format(new[] { c.Goal, c.Safe, c.Tolerance, c.V, c.T, c.ControlDt, c.MaxTime, throttle,
+                                      direction.X, direction.Y, direction.Z, inBand ? 1.0 : 0.0 }
+                              .Concat(GeneralizedCaptureContract.Observation(c, d).Select(x => (double)x)));
+            }
+            case "gen_band":
+            {
+                SequencePolicy policy = LoadSequence(S());
+                double low, high;
+                GeneralizedCaptureConfig.AltitudeBand(policy, D(), D(), out low, out high);
+                return Format(new[] { low, high });
             }
             case "g10":
                 return CraftBuilder.G10(D());

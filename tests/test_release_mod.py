@@ -41,6 +41,8 @@ def test_archive_is_gamedata_only_with_dll_policies_and_manifest(tmp_path, assem
         "GameData/OrbiterAutopilot/README.txt",
         "GameData/OrbiterAutopilot/Policies/ascent.policy",
         "GameData/OrbiterAutopilot/Policies/capture.policy",
+        "GameData/OrbiterAutopilot/Policies/generalized_ascent.policy",
+        "GameData/OrbiterAutopilot/Policies/generalized_capture.policy",
     }
     assert all(name.startswith("GameData/OrbiterAutopilot/") for name in names)
     assert not any(name.endswith((".py", ".zip", ".craft", ".cfg")) for name in names)
@@ -48,6 +50,9 @@ def test_archive_is_gamedata_only_with_dll_policies_and_manifest(tmp_path, assem
     validated = json.loads((ROOT / "validation/missions/manifest.json").read_text())["models"]
     for role in ("ascent", "capture"):
         assert manifest["live_models"][role]["sha256"] == validated[role]["sha256"]
+    for role in ("generalized_ascent", "generalized_capture"):
+        record = manifest["live_models"][role]
+        assert record["live_ksp_validated"] is False and record["simulation_test"]["episodes"] > 0
 
 
 def test_archive_is_deterministic_and_never_overwrites(tmp_path, assembly, policies):
@@ -91,7 +96,7 @@ def test_extracted_distribution_verifies_and_tampering_fails(tmp_path, assembly,
         bundle.extractall(folder)
     assert release_mod.verify_distribution(folder)["version"] == "0.2.0rc1"
     readme = (folder / "GameData/OrbiterAutopilot/README.txt").read_text()
-    assert "nothing else to install" in readme and "kRPC" in readme
+    assert "Nothing else to install" in readme and "no Python" in readme
     policy = folder / "GameData/OrbiterAutopilot/Policies/ascent.policy"
     policy.write_bytes(policy.read_bytes() + b"x")
     with pytest.raises(ValueError, match="changed"):
@@ -113,3 +118,12 @@ def test_policy_files_round_trip_the_validated_contract(policies):
     assert header["vehicle.stage_plan"] == "3,2" and header["vehicle.fuel_stages"] == "2,1"
     zip_sha = hashlib.sha256((ROOT / "models/transfer_ascent_ppo.zip").read_bytes()).hexdigest()
     assert header["source_sha256"] == zip_sha
+
+
+def test_generalized_policy_must_come_from_its_checkpoint(tmp_path, assembly, policies):
+    import shutil
+    swapped = tmp_path / "swapped"
+    shutil.copytree(policies, swapped)
+    (swapped / "generalized_ascent.policy").write_bytes((policies / "generalized_capture.policy").read_bytes())
+    with pytest.raises(ValueError, match="generalized_ascent.policy"):
+        release_mod.build_release(ROOT, assembly, tmp_path / "g.zip", policies=swapped)

@@ -18,7 +18,7 @@ namespace OrbiterRL
         public MissionFailure(string reason, string message) : base(message) { Reason = reason; }
     }
 
-    public sealed class Mission
+    public sealed partial class Mission
     {
         private const int ParkingWindows = 8;
         private const double DeltaVReserve = 100.0, StageSettle = 0.5;
@@ -29,6 +29,8 @@ namespace OrbiterRL
         private readonly AscentContract ascent;
         private readonly CelestialBody target;
         private readonly double targetAltitude;
+        private readonly MissionPlan plan;
+        private readonly MissionPolicies policies;
         private readonly MissionLog log;
         private readonly Attitude attitude = new Attitude();
         private readonly List<ManeuverNode> ownedNodes = new List<ManeuverNode>();
@@ -39,14 +41,16 @@ namespace OrbiterRL
         public string Detail { get; private set; }
         public bool Succeeded { get; private set; }
 
-        public Mission(Policy ascentPolicy, Policy capturePolicy, CelestialBody target, double targetAltitude,
-                       MissionLog log)
+        public Mission(MissionPolicies policies, MissionPlan plan, MissionLog log)
         {
-            this.ascentPolicy = ascentPolicy;
-            this.capturePolicy = capturePolicy;
+            this.policies = policies;
+            this.plan = plan;
+            ascentPolicy = policies.Ascent;
+            capturePolicy = policies.Capture;
             ascent = new AscentContract(ascentPolicy);
-            this.target = target;
-            this.targetAltitude = targetAltitude;
+            generalAscent = new GeneralizedAscentContract(policies.GeneralAscent);
+            target = plan.Target;
+            targetAltitude = plan.TargetAltitude;
             this.log = log;
             Phase = "preflight";
             Detail = "Checking the craft";
@@ -74,10 +78,14 @@ namespace OrbiterRL
             finally { vessel = null; }
         }
 
+        /// <summary>Raised on every phase change (the autotest saves resumable checkpoints).</summary>
+        public event Action<string> PhaseChanged;
+
         private void SetPhase(string phase, string detail)
         {
             Phase = phase;
             Detail = detail;
+            if (PhaseChanged != null) PhaseChanged(phase);
             Write("phase", "phase", phase, "detail", detail, "ut", Now);
         }
 
@@ -90,16 +98,27 @@ namespace OrbiterRL
                 vessel = FlightGlobals.ActiveVessel;
                 if (vessel == null) throw new MissionFailure("no_vessel", "No active vessel");
                 Preflight();
+                if (ResumeFrom != null)
+                {
+                    yield return GeneralizedResume();
+                    yield break;
+                }
+                if (!Validated)
+                {
+                    yield return GeneralizedRun();
+                    yield break;
+                }
                 yield return Ascent();
                 yield return Transfer();
                 yield return CoastToTarget();
                 CaptureConfig config = CaptureConfig.ForBody(capturePolicy, target.bodyName, target.gravParameter,
                     target.Radius, target.atmosphere ? target.atmosphereDepth : 0.0, target.sphereOfInfluence,
                     targetAltitude);
-                yield return CorrectPeriapsis(config);
-                yield return CoastToCapture(config);
+                yield return CorrectPeriapsis(config.Mu, config.Radius, config.GoalRadius);
+                yield return CoastToCapture(config.Mu, config.ArrivalRadiusRatio * config.GoalRadius);
                 yield return Capture(config);
-                yield return VerifyOrbit(config);
+                yield return VerifyOrbit(o => CaptureContract.OrbitFailures(config, o.referenceBody.bodyName, o.ApA, o.PeA,
+                                                                            o.eccentricity, o.semiMajorAxis));
                 Succeeded = true;
                 SetPhase("succeeded", string.Format(CultureInfo.InvariantCulture,
                     "Stable {0:0.0} x {1:0.0} km orbit of {2} verified for one full revolution",
@@ -128,9 +147,18 @@ namespace OrbiterRL
             if (!condition) throw new MissionFailure(reason, message);
         }
 
+        /// <summary>True when the validated single-craft policies fly this mission.</summary>
+        public bool Validated { get; private set; }
+
         private void Preflight()
         {
-            if (log != null) SetPhase("preflight", "Checking the craft against the trained vehicle");
+            if (log != null) SetPhase("preflight", "Checking the rocket");
+            if (vessel.situation != Vessel.Situations.PRELAUNCH && target != null)
+            {
+                ResumePreflight();
+                return;
+            }
+            ResumeFrom = null;
             Require(vessel.situation == Vessel.Situations.PRELAUNCH, "not_on_pad",
                     "Start from the launchpad: the learned ascent begins at PRELAUNCH");
             Require(vessel.IsControllable, "no_control", "The vessel has no crew or probe control");
@@ -138,12 +166,32 @@ namespace OrbiterRL
             Require(Math.Abs(body.gravParameter / ascent.Mu - 1) <= 0.01 && Math.Abs(body.Radius / ascent.Radius - 1) <= 0.01,
                     "wrong_body", "The learned ascent was trained for Kerbin");
             Require(Math.Abs(vessel.latitude) <= 1.0, "not_equatorial", "The heading-90 ascent needs an equatorial pad");
-            Require(target.referenceBody == body && target != body, "unsupported_target",
-                    target.bodyName + " does not orbit " + body.bodyName);
-            Require(vessel.patchedConicSolver != null, "no_patched_conics",
-                    "Maneuver nodes are unavailable (upgrade the Tracking Station or Mission Control)");
-            Require(vessel.patchedConicSolver.maneuverNodes.Count == 0, "existing_nodes",
-                    "Remove existing maneuver nodes first");
+            if (target != null)
+            {
+                Require(target.referenceBody == body && target != body, "unsupported_target",
+                        target.bodyName + " does not orbit " + body.bodyName);
+                Require(vessel.patchedConicSolver != null, "no_patched_conics",
+                        "Maneuver nodes are unavailable (upgrade the Tracking Station or Mission Control)");
+                Require(vessel.patchedConicSolver.maneuverNodes.Count == 0, "existing_nodes",
+                        "Remove existing maneuver nodes first");
+            }
+            // The validated pair flies only the trained rocket to the Mun or Minmus;
+            // every other rocket or destination uses the generalized policies.
+            Validated = target != null && TrainedCraft() == null;
+            if (Validated) TrainedCraftPreflight();
+            else GeneralizedPreflight();
+        }
+
+        /// <summary>Null when the vessel matches the trained craft's parts and engines, else why not.</summary>
+        private string TrainedCraft()
+        {
+            string parts = VesselInfo.Describe(vessel.parts.Select(p => p.partInfo.name));
+            if (parts != Header("vehicle.parts")) return "different parts";
+            return null;
+        }
+
+        private void TrainedCraftPreflight()
+        {
             string parts = VesselInfo.Describe(vessel.parts.Select(p => p.partInfo.name));
             Require(parts == Header("vehicle.parts"), "wrong_craft",
                     "This autopilot is trained for the '" + Header("vehicle.name") + "' craft only");
@@ -166,7 +214,7 @@ namespace OrbiterRL
             for (int i = 0; i < fuel.Length; i++)
                 Require(Math.Abs(VesselInfo.StagePropellant(vessel, fuel[i]) / ascent.FuelMass[i] - 1) <= 0.1,
                         "wrong_fuel", "Stage " + i + " propellant differs from the trained craft by over 10%");
-            Write("preflight_passed", "vessel", vessel.vesselName, "mass_kg", VesselInfo.Mass(vessel),
+            Write("preflight_passed", "mode", "validated", "vessel", vessel.vesselName, "mass_kg", VesselInfo.Mass(vessel),
                       "target", target.bodyName, "target_altitude_m", targetAltitude,
                       "ascent_policy_sha256", ascentPolicy.Sha256, "capture_policy_sha256", capturePolicy.Sha256);
         }
@@ -444,6 +492,25 @@ namespace OrbiterRL
             node.solver.UpdateFlightPlan();
         }
 
+        /// <summary>The node encodes the requested burn: within 0.01 m/s plus 0.1%.</summary>
+        private static bool NodeMatches(ManeuverNode node, V3 delta)
+        {
+            return (NodeBurn(node) - delta).Norm <= 0.01 + 1e-3 * delta.Norm;
+        }
+
+        /// <summary>Wait (bounded) for KSP's solver to reflect a just-set node, then verify it.</summary>
+        private static IEnumerator VerifyNode(ManeuverNode node, V3 delta, string what)
+        {
+            for (int frame = 0; frame < 10 && !NodeMatches(node, delta); frame++)
+            {
+                node.solver.UpdateFlightPlan();
+                yield return null;
+            }
+            if (!NodeMatches(node, delta))
+                throw new MissionFailure("node_frame", string.Format(CultureInfo.InvariantCulture,
+                    "KSP node vector disagrees with the {0} ({1:0.000} m/s difference)", what, (NodeBurn(node) - delta).Norm));
+        }
+
         private static V3 NodeBurn(ManeuverNode node)
         {
             if (node.nextPatch == null) return V3.Zero;
@@ -547,9 +614,7 @@ namespace OrbiterRL
             V3 delta = Planner.ScaledDeparture(plan, ephemeris, mu, scale);
             SetNodeVector(node, delta);
             yield return null;
-            V3 burn = NodeBurn(node);
-            if ((burn - delta).Norm > 1e-3 * Math.Max(1.0, delta.Norm))
-                throw new MissionFailure("node_frame", "KSP node vector disagrees with the requested burn");
+            yield return VerifyNode(node, delta, "requested burn");
             string route;
             double periapsis = PredictedPeriapsis(node, out route);
             Write("encounter_node_trial", "offset_scale", scale, "delta_v", delta, "route", route, "periapsis", periapsis);
@@ -615,6 +680,12 @@ namespace OrbiterRL
                     dv = remaining.magnitude;
                     if (dv <= NodeTolerance) break;
                     thrust = VesselInfo.AvailableThrust(vessel);
+                    if (thrust <= 0 && !Validated)
+                    {
+                        attitude.Throttle = 0;
+                        yield return StageToNextEngines();
+                        thrust = VesselInfo.AvailableThrust(vessel);
+                    }
                     if (thrust <= 0) throw new MissionFailure("out_of_fuel", "Engine exhausted before completing the node");
                     attitude.Point(remaining);
                     double error = attitude.Error;
@@ -713,14 +784,14 @@ namespace OrbiterRL
             v = Frames.Velocity(vessel);
         }
 
-        private IEnumerator CorrectPeriapsis(CaptureConfig config)
+        private IEnumerator CorrectPeriapsis(double mu, double bodyRadius, double goalRadius)
         {
             const double lead = 180.0;
             if (vessel.orbit.timeToPe < lead + 60)
                 throw new MissionFailure("late_correction", "Too close to periapsis for the correction burn");
             V3 r, v;
             CaptureState(out r, out v);
-            V3? delta = Planner.PeriapsisCorrection(r, v, config.Mu, config.Radius, config.GoalRadius, lead);
+            V3? delta = Planner.PeriapsisCorrection(r, v, mu, bodyRadius, goalRadius, lead);
             Write("periapsis_correction", "delta_v", delta.HasValue ? (object)delta.Value : null, "periapsis", vessel.orbit.PeA);
             if (!delta.HasValue) yield break;
             SetPhase("maneuver", "Correcting the arrival periapsis");
@@ -730,8 +801,7 @@ namespace OrbiterRL
             {
                 SetNodeVector(node, delta.Value);
                 yield return null;
-                if ((NodeBurn(node) - delta.Value).Norm > 1e-3 * Math.Max(1.0, delta.Value.Norm))
-                    throw new MissionFailure("node_frame", "KSP node vector disagrees with the correction");
+                yield return VerifyNode(node, delta.Value, "correction");
                 yield return ExecuteNode(node, target);
             }
             finally
@@ -740,14 +810,13 @@ namespace OrbiterRL
             }
         }
 
-        private IEnumerator CoastToCapture(CaptureConfig config)
+        private IEnumerator CoastToCapture(double mu, double radius)
         {
             SetPhase("capture_coast", "Coasting to the capture point");
-            double radius = config.ArrivalRadiusRatio * config.GoalRadius;
             V3 r, v, fr, fv;
             CaptureState(out r, out v);
-            double dt = Planner.IncomingRadiusTime(r, v, config.Mu, radius, vessel.orbit.timeToPe);
-            Kepler.Propagate(r, v, dt, config.Mu, out fr, out fv);
+            double dt = Planner.IncomingRadiusTime(r, v, mu, radius, vessel.orbit.timeToPe);
+            Kepler.Propagate(r, v, dt, mu, out fr, out fv);
             attitude.Attach(vessel);
             attitude.Throttle = 0;
             attitude.Point(Frames.ToWorld(-fv));
@@ -758,7 +827,7 @@ namespace OrbiterRL
                 yield return new WaitUt(Now + NodeTick);
             }
             CaptureState(out r, out v);
-            dt = Planner.IncomingRadiusTime(r, v, config.Mu, radius, vessel.orbit.timeToPe);
+            dt = Planner.IncomingRadiusTime(r, v, mu, radius, vessel.orbit.timeToPe);
             Write("capture_coast", "target_ut", Now + dt, "ut", Now);
             yield return Warp(Now + dt);
             if (vessel.mainBody != target) throw new MissionFailure("wrong_body", "SOI changed while coasting to capture");
@@ -835,12 +904,12 @@ namespace OrbiterRL
             }
         }
 
-        private IEnumerator VerifyOrbit(CaptureConfig config)
+        private IEnumerator VerifyOrbit(Func<Orbit, List<string>> check)
         {
             SetPhase("orbit_verification", "Coasting one full orbit with the engine off");
             attitude.Detach();
             Orbit o = vessel.orbit;
-            List<string> failures = CaptureContract.OrbitFailures(config, o.referenceBody.bodyName, o.ApA, o.PeA, o.eccentricity, o.semiMajorAxis);
+            List<string> failures = check(o);
             double period = o.period, start = Now;
             if (failures.Count > 0 || !(period > 0))
                 throw new MissionFailure("orbit_not_in_band", "Orbit outside target band: " + string.Join(",", failures.ToArray()));
@@ -848,7 +917,7 @@ namespace OrbiterRL
             {
                 yield return Warp(start + period * quarter / 4);
                 o = vessel.orbit;
-                failures = CaptureContract.OrbitFailures(config, o.referenceBody.bodyName, o.ApA, o.PeA, o.eccentricity, o.semiMajorAxis);
+                failures = check(o);
                 if (vessel.ctrlState.mainThrottle > 1e-5) failures.Add("throttle_not_zero");
                 Write("independent_orbital_period_probe", "quarter", quarter, "ut", Now, "periapsis", o.PeA,
                           "apoapsis", o.ApA, "failures", failures);

@@ -1,0 +1,72 @@
+{
+  "task": "matched_history_architecture_research_v2",
+  "contract": {
+    "task": "matched_history_architecture_research_v2",
+    "benchmark": "ascent",
+    "policy_spec": {
+      "architecture": "gru",
+      "observations": 56,
+      "actions": 2,
+      "context": 16,
+      "initial_std": 0.15,
+      "action_transform": "scaled_tanh",
+      "action_scale": 1.05,
+      "deadzone": 0.0
+    },
+    "architecture_parameters": 820997,
+    "body_names": [
+      "Kerbin"
+    ],
+    "body_catalog_sha256": null,
+    "orbital_benchmark_version": null,
+    "orbital_benchmark_task": null,
+    "scope": "Kerbin planar launch",
+    "history_semantics": "fixed trailing observation/executed-action window, zero at each episode reset",
+    "training": {
+      "worlds": 2048,
+      "horizon": 64,
+      "updates": 128,
+      "bc_updates": 2000,
+      "label_worlds": 256,
+      "label_steps": 512,
+      "actor_lr": 1e-05,
+      "critic_lr": 0.0003,
+      "entropy": 0.001,
+      "critic_extra": 32,
+      "batch_size": 1024,
+      "epochs": 4,
+      "target_kl": 0.02,
+      "bc_target": "policy_inverse_action_mapping",
+      "bc_coef": 1.0,
+      "bc_decay_updates": 64,
+      "critic_warmup": 16,
+      "minibatch_permutation": "fresh_each_epoch"
+    },
+    "validation_seed": 4600505,
+    "comparison_seed": 5600505,
+    "comparison_selects_weights": false,
+    "live_ksp_validated": false,
+    "limitations": [
+      "No actual KSP qualification",
+      "Local skill scores do not measure complete missions",
+      "Finite trailing-window memory, not unbounded recurrent state",
+      "Active liquid stage surrogate; no arbitrary propulsion/staging graphs",
+      "No heating, terrain, aerocapture, or structural dynamics"
+    ]
+  },
+  "ancestry": {
+    "seed": 902,
+    "phase": "ppo_128",
+    "update": 128,
+    "selected_update": 128,
+    "upstream": {
+      "sha256": "c78bf65a1ca443bb688f436d4f6040e8cd45099f907d4db8d9cfcc86b9185059",
+      "usage": "frozen_action_teacher"
+    },
+    "transitions": 16777216
+  },
+  "sha256": "751e95e0a8185e884e313fd4ef199b663cb99e236ac555ed34e37b4ec79fa9c6",
+  "saved_at_unix": 1792523475.4639266,
+  "live_ksp_validated": false,
+  "promoted": false
+}

@@ -20,6 +20,8 @@ import tomllib
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 LIVE_MODELS = {"ascent": "transfer_ascent_ppo", "capture": "moon_capture"}
+# Any-rocket policies; simulation results travel with them in the manifest.
+GENERALIZED_MODELS = {"generalized_ascent": "generalized_ascent_gru", "generalized_capture": "generalized_capture_lstm"}
 ADDON = "GameData/OrbiterAutopilot"
 ASSEMBLY_PATH = ADDON + "/Plugins/OrbiterAutopilot.dll"
 MANIFEST_PATH = ADDON + "/release-manifest.json"
@@ -31,34 +33,38 @@ PATH_MARKERS = (
 
 README_TEXT = """Orbiter Autopilot {version}
 
-A learned autopilot that flies the OrbiterRL Transfer rocket from the
-Kerbin launchpad to a 40-60 km orbit of the Mun or Minmus, entirely inside
-KSP. There is nothing else to install: no Python, no kRPC, no setup.
+Flies your rocket from the Kerbin launchpad to orbit, and on to the Mun or
+Minmus, by itself. The flying is done by neural networks that learned to
+launch, stage and brake into orbit. Nothing else to install: no other mods,
+no Python, no setup.
 
 Install
-  Extract this archive into your KSP 1.12 folder, so that
-  GameData/OrbiterAutopilot sits next to GameData/Squad. Then start KSP.
+  Unzip into your KSP 1.12 folder so GameData/OrbiterAutopilot sits next to
+  GameData/Squad. Start KSP.
 
 Fly
-  1. On first start the addon builds "OrbiterRL Transfer" from your own stock
-     Orbiter One and Science Jr craft; it appears under stock VAB vessels.
-  2. In the VAB, load OrbiterRL Transfer and launch it onto the launchpad.
-  3. Click the Orbiter button in the flight toolbar, choose Mun or Minmus and
-     an altitude, then Run. Stop releases throttle and steering at any time.
+  1. Put a rocket on the launchpad (see "Which rockets" below), or use the
+     ready-made "OrbiterRL Transfer", which the mod builds from your stock
+     Orbiter One and Science Jr craft. Find it in the VAB under stock vessels.
+  2. Click the Orbiter button on the toolbar.
+  3. Pick Kerbin orbit, Mun or Minmus and an altitude, then press Run.
+  4. Press Stop at any time to take back control.
 
-The autopilot flies a learned ascent (with staging), plans a Lambert
-transfer and confirms it against KSP's own patched conics, executes the
-burns, flies a learned capture and then coasts one full orbit to verify it.
-Maneuver nodes must be available (Tracking Station / Mission Control
-upgraded in Career). The policies are trained for this one rocket, so the
-preflight check refuses any other craft. Each flight is logged as JSON lines
-in GameData/OrbiterAutopilot/Logs.
+Which rockets
+  Up to four stages stacked on top of each other, liquid engines only, each
+  stage dropping its engine and tanks when empty. No solid boosters, side
+  boosters or fuel lines. It needs a launch thrust-to-weight above about 1.2
+  and enough fuel for orbit. The window tells you if your rocket can't be flown.
 
-Released policies were validated in actual KSP flights; individual flights
-are demonstrations, not a measured success rate.
+Good to know
+  - OrbiterRL Transfer to the Mun or Minmus uses the original policies, which
+    have flown full missions in real KSP. Every other rocket uses the newer
+    "any rocket" policies: they have reached orbit in real KSP with a few
+    test rockets, but they are new, so expect the odd failure.
+  - Career mode needs maneuver nodes unlocked for Mun and Minmus trips.
+  - Each flight is logged in GameData/OrbiterAutopilot/Logs.
 
-License: MIT (see LICENSE). Game assets and third-party runtimes are not
-included.
+License: MIT (see LICENSE). Game assets and other mods are not included.
 """
 
 
@@ -77,7 +83,7 @@ def _read(path):
 
 
 def _policy_header(data):
-    if not data.startswith(b"ORBPOL1\n"):
+    if not data.startswith((b"ORBPOL1\n", b"ORBSEQ1\n")):
         raise ValueError("Not an Orbiter policy file")
     length = int.from_bytes(data[8:12], "little")
     text = data[12:12 + length].decode()
@@ -128,6 +134,20 @@ def build_release(project_root, assembly, output, *, version=None, policies=None
                 raise ValueError(f"{role}.policy was not exported from the validated checkpoint")
             payload[f"{ADDON}/Policies/{role}.policy"] = data
             models[role] = dict(record, policy_sha256=hashlib.sha256(data).hexdigest())
+        for role, stem in GENERALIZED_MODELS.items():
+            checkpoint = _read(root / f"models/{stem}.pt")
+            summary = json.loads(_read(root / f"models/{stem}.summary.json"))
+            data = _read(Path(policies) / f"{role}.policy")
+            header = _policy_header(data)
+            if header.get("kind") != role or header.get("source_sha256") != hashlib.sha256(checkpoint).hexdigest():
+                raise ValueError(f"{role}.policy was not exported from models/{stem}.pt")
+            payload[f"{ADDON}/Policies/{role}.policy"] = data
+            comparison = summary["comparison"]
+            models[role] = dict(checkpoint=f"models/{stem}.pt", sha256=hashlib.sha256(checkpoint).hexdigest(),
+                                policy_sha256=hashlib.sha256(data).hexdigest(),
+                                simulation_test=dict(episodes=comparison["episodes"], successes=comparison["successes"],
+                                                     per_body={k: v["successes"] for k, v in comparison["per_body"].items()}),
+                                live_ksp_validated=False)
     manifest = dict(
         schema_version=2,
         application="orbiter-autopilot",

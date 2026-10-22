@@ -1,0 +1,192 @@
+{
+  "scope": "Actual KSP 1.12.5 flights of the self-contained addon with the generalized policies; individual demonstrations, not a success rate.",
+  "refused_preflight": [
+    {
+      "vessel": "OrbiterRL Liquid",
+      "reason": "Only 3655 m/s of vacuum delta-v; Kerbin orbit needs about 3,800 m/s or more"
+    }
+  ],
+  "flights": [
+    {
+      "id": "transfer_kerbin_orbit_100",
+      "description": "OrbiterRL Transfer to a 100 km Kerbin orbit; aero inputs uncalibrated (clamped high)",
+      "log": "validation/generalized/transfer_kerbin_orbit_100.jsonl.gz",
+      "log_sha256": "41582b365ee53b76e2321d1bca67a1e3ff5f334b1cc2a19b6bb6c51455ac4782",
+      "success": true,
+      "outcome": "Stable 81.2 x 100.7 km Kerbin orbit verified for one full revolution",
+      "mode": "generalized",
+      "vessel": "OrbiterRL Transfer",
+      "target": "Kerbin orbit",
+      "stages": [
+        [
+          2330.0001323223114,
+          5999.999865889549,
+          214999.98474121094,
+          320,
+          250
+        ],
+        [
+          1000.0000894069672,
+          3999.999910593033,
+          59999.996185302734,
+          345,
+          85
+        ]
+      ],
+      "payload_kg": 980.0000749528408,
+      "pad_twr": 1.196928334150544,
+      "ideal_delta_v": 5445.204478472268,
+      "aero": {
+        "drag": 0.6974970783736598,
+        "alpha": 14.310000073164701,
+        "lift": 10.017000051215291
+      },
+      "ascent_policy_sha256": "24c32ed82f0d44b72654f8d1812076464f1f77bd142c9cfb5084ada4e5bed921",
+      "capture_policy_sha256": "3d4be166aaf6bcaeead6528a14a5356fb6be3f0a0706c5f627f6c819542739cc",
+      "parking_orbit_km": [
+        81.18,
+        100.69
+      ],
+      "final_orbit_km": [
+        81.18,
+        100.69
+      ],
+      "coast_probes_passed": 4
+    },
+    {
+      "id": "terrier_kerbin_orbit_110",
+      "description": "OrbiterRL Terrier to a 110 km Kerbin orbit",
+      "log": "validation/generalized/terrier_kerbin_orbit_110.jsonl.gz",
+      "log_sha256": "5196871f888b3c31c6af77767d3840d6d225014ba16dfbc7b418df50bc24979f",
+      "success": true,
+      "outcome": "Stable 92.0 x 112.8 km Kerbin orbit verified for one full revolution",
+      "mode": "generalized",
+      "vessel": "OrbiterRL Terrier",
+      "target": "Kerbin orbit",
+      "stages": [
+        [
+          2330.0001323223114,
+          5999.999865889549,
+          214999.98474121094,
+          320,
+          250
+        ],
+        [
+          750.0000447034836,
+          1999.9999552965164,
+          59999.996185302734,
+          345,
+          85
+        ]
+      ],
+      "payload_kg": 980.0000749528408,
+      "pad_twr": 1.420235857823885,
+      "ideal_delta_v": 4758.950850791798,
+      "aero": {
+        "drag": 0.7447907960083603,
+        "alpha": 5.845813758942113,
+        "lift": 3.786220042905103
+      },
+      "ascent_policy_sha256": "24c32ed82f0d44b72654f8d1812076464f1f77bd142c9cfb5084ada4e5bed921",
+      "capture_policy_sha256": "3d4be166aaf6bcaeead6528a14a5356fb6be3f0a0706c5f627f6c819542739cc",
+      "parking_orbit_km": [
+        92.03,
+        112.78
+      ],
+      "final_orbit_km": [
+        92.03,
+        112.78
+      ],
+      "coast_probes_passed": 4
+    },
+    {
+      "id": "nochute_mun_capture_dither",
+      "description": "Parachute-less Transfer to the Mun; all-body capture at 86% dry mass dithered until out of fuel (led to fuel-aware capture choice)",
+      "log": "validation/generalized/nochute_mun_capture_dither.jsonl.gz",
+      "log_sha256": "317ceac798291065bd3989ff3510874fb7e26c46d69fcd959cca654cbd377906",
+      "success": false,
+      "outcome": "Mission stopped: No further engine stage could be ignited",
+      "mode": "generalized",
+      "vessel": "OrbiterRL Transfer NoChute",
+      "target": "Mun",
+      "stages": [
+        [
+          2330.0001323223114,
+          5999.999865889549,
+          214999.98474121094,
+          320,
+          250
+        ],
+        [
+          1000.0000894069672,
+          3999.999910593033,
+          59999.996185302734,
+          345,
+          85
+        ]
+      ],
+      "payload_kg": 880.0000734627247,
+      "pad_twr": 1.2053514752198535,
+      "ideal_delta_v": 5579.474432093865,
+      "aero": {
+        "drag": 0.9646890813410468,
+        "alpha": 7.952237134395876,
+        "lift": 5.150509555342484
+      },
+      "ascent_policy_sha256": "24c32ed82f0d44b72654f8d1812076464f1f77bd142c9cfb5084ada4e5bed921",
+      "capture_policy_sha256": "3d4be166aaf6bcaeead6528a14a5356fb6be3f0a0706c5f627f6c819542739cc",
+      "parking_orbit_km": [
+        80.54,
+        105.29
+      ]
+    },
+    {
+      "id": "nochute_mun_end_to_end",
+      "description": "Parachute-less Transfer (not the trained craft) from the pad to a 50 km Mun orbit",
+      "log": "validation/generalized/nochute_mun_end_to_end.jsonl.gz",
+      "log_sha256": "8324b88ea11f858df4a345e18b8c21d8ed4a2b2742f04de2f8265ce0e8890fa8",
+      "success": true,
+      "outcome": "Stable 49.5 x 54.8 km orbit of Mun verified for one full revolution",
+      "mode": "generalized",
+      "vessel": "OrbiterRL Transfer NoChute",
+      "target": "Mun",
+      "stages": [
+        [
+          2330.0001323223114,
+          5999.999865889549,
+          214999.98474121094,
+          320,
+          250
+        ],
+        [
+          1000.0000894069672,
+          3999.999910593033,
+          59999.996185302734,
+          345,
+          85
+        ]
+      ],
+      "payload_kg": 880.0000734627247,
+      "pad_twr": 1.2053514752198535,
+      "ideal_delta_v": 5579.474432093865,
+      "aero": {
+        "drag": 0.9646890813410468,
+        "alpha": 7.952236466794451,
+        "lift": 5.150509122950005
+      },
+      "ascent_policy_sha256": "24c32ed82f0d44b72654f8d1812076464f1f77bd142c9cfb5084ada4e5bed921",
+      "capture_policy_sha256": "3d4be166aaf6bcaeead6528a14a5356fb6be3f0a0706c5f627f6c819542739cc",
+      "parking_orbit_km": [
+        80.53,
+        105.28
+      ],
+      "capture_policy": "moon_capture_validated",
+      "arrival_dry_fraction": 0.8606283954526764,
+      "final_orbit_km": [
+        49.46,
+        54.85
+      ],
+      "coast_probes_passed": 4
+    }
+  ]
+}

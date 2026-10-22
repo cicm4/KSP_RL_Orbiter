@@ -1,0 +1,350 @@
+{
+  "task": "matched_history_architecture_research_v2",
+  "benchmark": "orbital",
+  "comparison": {
+    "task": "orbital",
+    "seed": 5600505,
+    "episodes": 544,
+    "successes": 401,
+    "success_rate": 0.7371323529411765,
+    "macro_body_success_rate": 0.7371323529411765,
+    "per_body": {
+      "Bop": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Dres": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Duna": {
+        "episodes": 32,
+        "successes": 27,
+        "success_rate": 0.84375,
+        "failure_counts": {
+          "4": 3,
+          "5": 2
+        },
+        "qualified_successes": 27
+      },
+      "Eeloo": {
+        "episodes": 32,
+        "successes": 31,
+        "success_rate": 0.96875,
+        "failure_counts": {
+          "4": 1
+        },
+        "qualified_successes": 31
+      },
+      "Eve": {
+        "episodes": 32,
+        "successes": 7,
+        "success_rate": 0.21875,
+        "failure_counts": {
+          "4": 8,
+          "5": 13,
+          "6": 4
+        },
+        "qualified_successes": 7
+      },
+      "Gilly": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Ike": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Jool": {
+        "episodes": 32,
+        "successes": 0,
+        "success_rate": 0.0,
+        "failure_counts": {
+          "4": 31,
+          "5": 1
+        },
+        "qualified_successes": 0
+      },
+      "Kerbin": {
+        "episodes": 32,
+        "successes": 13,
+        "success_rate": 0.40625,
+        "failure_counts": {
+          "5": 14,
+          "4": 4,
+          "6": 1
+        },
+        "qualified_successes": 13
+      },
+      "Laythe": {
+        "episodes": 32,
+        "successes": 22,
+        "success_rate": 0.6875,
+        "failure_counts": {
+          "5": 9,
+          "6": 1
+        },
+        "qualified_successes": 22
+      },
+      "Minmus": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Moho": {
+        "episodes": 32,
+        "successes": 28,
+        "success_rate": 0.875,
+        "failure_counts": {
+          "5": 4
+        },
+        "qualified_successes": 28
+      },
+      "Mun": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Pol": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Sun": {
+        "episodes": 32,
+        "successes": 0,
+        "success_rate": 0.0,
+        "failure_counts": {
+          "4": 24,
+          "5": 8
+        },
+        "qualified_successes": 0
+      },
+      "Tylo": {
+        "episodes": 32,
+        "successes": 19,
+        "success_rate": 0.59375,
+        "failure_counts": {
+          "5": 10,
+          "6": 1,
+          "4": 2
+        },
+        "qualified_successes": 19
+      },
+      "Vall": {
+        "episodes": 32,
+        "successes": 30,
+        "success_rate": 0.9375,
+        "failure_counts": {
+          "5": 2
+        },
+        "qualified_successes": 30
+      }
+    },
+    "live_ksp_validated": false,
+    "scope": "local orbital control; no interbody transfer or KSP proof",
+    "reason_codes": {
+      "1": "success",
+      "2": "unsafe_altitude",
+      "3": "SOI_exit",
+      "4": "fuel",
+      "5": "timeout",
+      "6": "missed_capture"
+    },
+    "qualified_successes": 401
+  },
+  "selected_ancestry": {
+    "seed": 902,
+    "phase": "ppo_32",
+    "update": 32,
+    "selected_update": 32,
+    "transitions": 4194304
+  },
+  "interrupted": false,
+  "live_ksp_validated": false,
+  "final_tests_select_checkpoint": false,
+  "elapsed_s": 614.7892626109533,
+  "teacher_reference": {
+    "task": "orbital",
+    "seed": 5600505,
+    "episodes": 544,
+    "successes": 474,
+    "success_rate": 0.8713235294117647,
+    "macro_body_success_rate": 0.8713235294117647,
+    "per_body": {
+      "Bop": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Dres": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Duna": {
+        "episodes": 32,
+        "successes": 30,
+        "success_rate": 0.9375,
+        "failure_counts": {
+          "5": 2
+        },
+        "qualified_successes": 30
+      },
+      "Eeloo": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Eve": {
+        "episodes": 32,
+        "successes": 14,
+        "success_rate": 0.4375,
+        "failure_counts": {
+          "5": 8,
+          "6": 4,
+          "4": 6
+        },
+        "qualified_successes": 14
+      },
+      "Gilly": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Ike": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Jool": {
+        "episodes": 32,
+        "successes": 21,
+        "success_rate": 0.65625,
+        "failure_counts": {
+          "4": 10,
+          "5": 1
+        },
+        "qualified_successes": 21
+      },
+      "Kerbin": {
+        "episodes": 32,
+        "successes": 19,
+        "success_rate": 0.59375,
+        "failure_counts": {
+          "2": 4,
+          "5": 7,
+          "4": 1,
+          "6": 1
+        },
+        "qualified_successes": 19
+      },
+      "Laythe": {
+        "episodes": 32,
+        "successes": 23,
+        "success_rate": 0.71875,
+        "failure_counts": {
+          "5": 8,
+          "6": 1
+        },
+        "qualified_successes": 23
+      },
+      "Minmus": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Moho": {
+        "episodes": 32,
+        "successes": 28,
+        "success_rate": 0.875,
+        "failure_counts": {
+          "5": 4
+        },
+        "qualified_successes": 28
+      },
+      "Mun": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Pol": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Sun": {
+        "episodes": 32,
+        "successes": 32,
+        "success_rate": 1.0,
+        "failure_counts": {},
+        "qualified_successes": 32
+      },
+      "Tylo": {
+        "episodes": 32,
+        "successes": 21,
+        "success_rate": 0.65625,
+        "failure_counts": {
+          "5": 8,
+          "6": 1,
+          "4": 2
+        },
+        "qualified_successes": 21
+      },
+      "Vall": {
+        "episodes": 32,
+        "successes": 30,
+        "success_rate": 0.9375,
+        "failure_counts": {
+          "5": 2
+        },
+        "qualified_successes": 30
+      }
+    },
+    "live_ksp_validated": false,
+    "scope": "local orbital control; no interbody transfer or KSP proof",
+    "reason_codes": {
+      "1": "success",
+      "2": "unsafe_altitude",
+      "3": "SOI_exit",
+      "4": "fuel",
+      "5": "timeout",
+      "6": "missed_capture"
+    },
+    "qualified_successes": 474
+  }
+}

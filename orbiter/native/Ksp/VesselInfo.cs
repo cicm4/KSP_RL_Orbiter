@@ -125,6 +125,24 @@ namespace OrbiterRL
             return Mass(vessel) - usable;
         }
 
+        /// <summary>
+        /// Wet mass minus the propellant the running engines can still burn: the
+        /// propellant types they use, in their own (not yet decoupled) section.
+        /// </summary>
+        public static double ReachableDryMass(Vessel vessel)
+        {
+            List<ModuleEngines> active = Engines(vessel).Where(Active).ToList();
+            if (active.Count == 0) return Mass(vessel);
+            HashSet<int> sections = new HashSet<int>(active.Select(e => DecoupleStage(e.part)));
+            HashSet<string> names = new HashSet<string>(active.SelectMany(e => e.propellants).Where(p => !p.ignoreForIsp).Select(p => p.name));
+            double propellant = 0;
+            foreach (Part part in vessel.parts)
+                if (sections.Contains(DecoupleStage(part)))
+                    foreach (PartResource resource in part.Resources)
+                        if (names.Contains(resource.resourceName)) propellant += resource.amount * resource.info.density * 1000.0;
+            return Mass(vessel) - propellant;
+        }
+
         public static double SurfaceAltitude(Vessel vessel)
         {
             double terrain = vessel.heightFromTerrain;
