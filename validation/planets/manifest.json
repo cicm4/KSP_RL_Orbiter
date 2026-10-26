@@ -1,0 +1,70 @@
+{
+  "scope": "Actual KSP 1.12.5 flights of the self-contained addon to planets and with non-stack rockets; individual demonstrations, not a success rate. The Duna mission spans three logs joined by autotest checkpoints.",
+  "vessel": "Kerbal X (stock)",
+  "flights": [
+    {
+      "id": "kerbalx_kerbin_orbit_100",
+      "description": "Stock Kerbal X (asparagus, fuel lines) to a 100 km Kerbin orbit; phases from KSP's delta-v simulation",
+      "log": "validation/planets/kerbalx_kerbin_orbit_100.jsonl.gz",
+      "log_sha256": "0779d7574ac33908fd04d53845cf1e4a328c9f12b37b9b42970e5de331f8668e",
+      "success": true,
+      "outcome": "Stable 80.5 x 91.3 km Kerbin orbit verified for one full revolution"
+    },
+    {
+      "id": "kerbalx_duna_false_impact_after_pad_warp",
+      "description": "Duna attempt 1: 227-day pad wait, then a false impact from stale terrain height at liftoff (fixed: require KSP's FLYING situation, settle 3 s after warp)",
+      "log": "validation/planets/kerbalx_duna_false_impact_after_pad_warp.jsonl.gz",
+      "log_sha256": "cb0f0e748d09372ff651b61241a3fde15de5de1dc092ac99ff960ea49bacabfe",
+      "success": false,
+      "outcome": "Mission stopped: Learned ascent ended without orbit: impact"
+    },
+    {
+      "id": "kerbalx_duna_leg1_pad_to_orbit",
+      "description": "Duna attempt 2: pad wait, ascent to 80 x 91 km; escape check found no escape because the path crossed the Mun's SOI (fixed: postpone past moon flybys)",
+      "log": "validation/planets/kerbalx_duna_leg1_pad_to_orbit.jsonl.gz",
+      "log_sha256": "07f0a5f9cc50e11cf0df35eb4f1ac3db1a9d77e10b6b505cc2c16081d7364182",
+      "success": false,
+      "outcome": "Mission stopped: KSP predicts no escape from Kerbin after the burn"
+    },
+    {
+      "id": "kerbalx_duna_resume_picked_far_window",
+      "description": "Resume from orbit chose the next synodic window 926 days later (fixed: earliest window within 10% of the cheapest)",
+      "log": "validation/planets/kerbalx_duna_resume_picked_far_window.jsonl.gz",
+      "log_sha256": "43e40edfc7f73abecd1695d300406993f788678c36cc3c3656b687accb23b536",
+      "success": false,
+      "outcome": "Mission stopped: The Duna window opens in 926 days and KSP warps slowly in low orbit; launch from the pad instead"
+    },
+    {
+      "id": "kerbalx_duna_escape_through_mun",
+      "description": "Resume diagnostics: KSP chain Kerbin>Mun>Kerbin>Sun for the escape node",
+      "log": "validation/planets/kerbalx_duna_escape_through_mun.jsonl.gz",
+      "log_sha256": "a0969945b5da601847a31c17a0ce63570559be39a97b4f20ebb099ba275c5a9d",
+      "success": false,
+      "outcome": "Mission stopped: KSP predicts no escape from Kerbin after the burn"
+    },
+    {
+      "id": "kerbalx_duna_leg2_escape_cruise",
+      "description": "Escape postponed five orbits past the Mun, shooting converged to 0.07 m/s, 15.6 m/s course correction, in-SOI correction, capture stopped by a zero feedback command inside the band (fixed: hold attitude)",
+      "log": "validation/planets/kerbalx_duna_leg2_escape_cruise.jsonl.gz",
+      "log_sha256": "bf8383e553cfa8d15bb9c05f17dcfd75d4d1c29e9dde4d132db3ac00bb8b162d",
+      "success": false,
+      "outcome": "Mission stopped: ArgumentException: Pointing direction must be finite and nonzero"
+    },
+    {
+      "id": "kerbalx_duna_leg3_capture",
+      "description": "Resumed from the capture checkpoint: feedback capture to 68.2 x 72.5 km Duna orbit, one unpowered revolution verified",
+      "log": "validation/planets/kerbalx_duna_leg3_capture.jsonl.gz",
+      "log_sha256": "045e8741e517a61c8f2c96e823bf9deade950fbcd009e778af6eadac6f347977",
+      "success": true,
+      "outcome": "Stable 68.2 x 72.5 km orbit of Duna verified for one full revolution"
+    },
+    {
+      "id": "kerbalx_eve_steep_escape_stopped",
+      "description": "Eve attempt: pad wait and ascent fine; the solved escape burn was 2,634 m/s (26 deg departure declination from an equatorial parking orbit) against a 1,108 m/s in-plane estimate. KSP was closed before the burn (fixed: tilt-priced escape, solved-burn budget check)",
+      "log": "validation/planets/kerbalx_eve_steep_escape_stopped.jsonl.gz",
+      "log_sha256": "7ccd164ee9ed454a598b05cf32155e0c71b59fafdf96e650a3d21464bba915db",
+      "success": false,
+      "outcome": "Stopped by the tester before the escape burn"
+    }
+  ]
+}

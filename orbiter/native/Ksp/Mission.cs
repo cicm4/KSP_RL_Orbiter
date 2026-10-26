@@ -168,8 +168,8 @@ namespace OrbiterRL
             Require(Math.Abs(vessel.latitude) <= 1.0, "not_equatorial", "The heading-90 ascent needs an equatorial pad");
             if (target != null)
             {
-                Require(target.referenceBody == body && target != body, "unsupported_target",
-                        target.bodyName + " does not orbit " + body.bodyName);
+                Require(target != body && (target.referenceBody == body || Interplanetary), "unsupported_target",
+                        target.bodyName + " is not a moon of " + body.bodyName + " or a planet");
                 Require(vessel.patchedConicSolver != null, "no_patched_conics",
                         "Maneuver nodes are unavailable (upgrade the Tracking Station or Mission Control)");
                 Require(vessel.patchedConicSolver.maneuverNodes.Count == 0, "existing_nodes",
@@ -177,7 +177,7 @@ namespace OrbiterRL
             }
             // The validated pair flies only the trained rocket to the Mun or Minmus;
             // every other rocket or destination uses the generalized policies.
-            Validated = target != null && TrainedCraft() == null;
+            Validated = target != null && target.referenceBody == body && TrainedCraft() == null;
             if (Validated) TrainedCraftPreflight();
             else GeneralizedPreflight();
         }

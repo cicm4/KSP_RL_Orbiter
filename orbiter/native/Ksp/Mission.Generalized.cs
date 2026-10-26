@@ -1,6 +1,6 @@
-// Generalized missions: any supported rocket (up to four sequential liquid
-// stages) to a chosen Kerbin orbit, or onward to the Mun or Minmus, with the
-// vehicle-conditioned GRU ascent and the all-body LSTM capture policies.
+// Generalized missions: any supported liquid rocket (stacked stages, side
+// boosters or asparagus) to a chosen Kerbin orbit, or onward to a moon or a
+// planet, with the vehicle-conditioned GRU ascent and the all-body capture.
 // These policies were trained and tested only in simulation (see README).
 using System;
 using System.Collections;
@@ -58,6 +58,15 @@ namespace OrbiterRL
                 Require(o.PeA > 0, "impact_course", "This approach hits " + target.bodyName);
                 ResumeFrom = "capture";
             }
+            else if (Interplanetary && vessel.mainBody == target.referenceBody) ResumeFrom = "cruise";
+            else if (Interplanetary && vessel.mainBody == Home && o.eccentricity >= 1
+                     && o.patchEndTransition == Orbit.PatchTransitionType.ESCAPE) ResumeFrom = "escape";
+            else if (Interplanetary && vessel.mainBody == Home)
+            {
+                Require(vessel.situation == Vessel.Situations.ORBITING && o.PeA > (Home.atmosphere ? Home.atmosphereDepth : 0) + 1000,
+                        "not_in_orbit", "Launch from the pad, or resume from a stable " + Home.bodyName + " orbit");
+                ResumeFrom = "transfer";
+            }
             else if (vessel.mainBody == target.referenceBody)
             {
                 bool encounter = false;
@@ -73,7 +82,7 @@ namespace OrbiterRL
                     ResumeFrom = "transfer";
                 }
             }
-            else throw new MissionFailure("wrong_body", "Resume works from " + target.referenceBody.bodyName + " orbit or on the way to " + target.bodyName);
+            else throw new MissionFailure("wrong_body", "Resume works from " + Home.bodyName + " orbit or on the way to " + target.bodyName);
             if (target != null)
             {
                 double low, high;
@@ -91,8 +100,21 @@ namespace OrbiterRL
         {
             controlPart = vessel.GetReferenceTransformPart();
             if (controlPart == null) controlPart = vessel.rootPart;
-            if (ResumeFrom == "transfer") yield return Transfer();
-            if (ResumeFrom == "transfer" || ResumeFrom == "coast") yield return CoastToTarget();
+            if (Interplanetary)
+            {
+                if (ResumeFrom == "transfer") yield return PlanetTransfer();
+                else if (ResumeFrom == "escape") yield return LeaveSoi();
+                if (ResumeFrom != "capture")
+                {
+                    yield return Cruise();
+                    yield return CoastToTarget();
+                }
+            }
+            else
+            {
+                if (ResumeFrom == "transfer") yield return Transfer();
+                if (ResumeFrom == "transfer" || ResumeFrom == "coast") yield return CoastToTarget();
+            }
             yield return GeneralizedArrival();
         }
 
@@ -102,6 +124,15 @@ namespace OrbiterRL
             GeneralizedCaptureConfig config = GeneralizedCaptureConfig.For(policies.GeneralCapture, target.bodyName,
                 target.gravParameter, target.Radius, target.atmosphere ? target.atmosphereDepth : 0.0,
                 target.sphereOfInfluence, targetAltitude);
+            if (Interplanetary)
+            {
+                yield return PlanetArrival(config);
+                Succeeded = true;
+                SetPhase("succeeded", string.Format(CultureInfo.InvariantCulture,
+                    "Stable {0:0.0} x {1:0.0} km orbit of {2} verified for one full revolution",
+                    vessel.orbit.PeA / 1000, vessel.orbit.ApA / 1000, target.bodyName));
+                yield break;
+            }
             double arrival = policies.GeneralCapture.Constant("arrival_radius_ratio") * config.Goal;
             // The all-body policy trained with dry-mass fractions up to 0.4 (at least
             // ~2.5 km/s on board). Craft that arrive nearly empty are flown by the
@@ -147,7 +178,7 @@ namespace OrbiterRL
             report = CraftAnalyzer.Analyze(vessel, generalAscent, plan.OrbitAltitude);
             if (!report.Ok) throw new MissionFailure("unsupported_craft", report.Errors[0]);
             Require(VesselInfo.Engines(vessel).All(e => !e.EngineIgnited), "engine_running", "Engines are already running");
-            Require(report.ActivationStages[0] < vessel.currentStage, "wrong_stage", "The first engine stage has already fired");
+            Require(report.PhaseStages[0] < vessel.currentStage, "wrong_stage", "The first engine stage has already fired");
             if (target != null)
             {
                 double low, high;
@@ -156,10 +187,21 @@ namespace OrbiterRL
                 Require(targetAltitude >= low - 1 && targetAltitude <= high + 1, "altitude_out_of_band", string.Format(
                     CultureInfo.InvariantCulture, "Choose a {0} orbit between {1:0} and {2:0} km", target.bodyName, low / 1000, high / 1000));
             }
+            double budget = double.NaN;
+            if (target != null)
+            {
+                budget = CraftAnalyzer.AscentDeltaV + TripBudget(plan.OrbitAltitude);
+                Require(report.Full.IdealDeltaV >= budget, "insufficient_delta_v", string.Format(CultureInfo.InvariantCulture,
+                    "This rocket has about {0:0} m/s of delta-v; an orbit of {1} needs about {2:0} m/s", report.Full.IdealDeltaV,
+                    target.bodyName, budget));
+            }
             CraftSpec c = report.Craft;
-            Write("preflight_passed", "mode", "generalized", "vessel", vessel.vesselName, "mass_kg", VesselInfo.Mass(vessel),
+            Write("preflight_passed", "mode", "generalized", "mission_delta_v", budget, "vessel", vessel.vesselName, "mass_kg", VesselInfo.Mass(vessel),
                   "target", target != null ? target.bodyName : "Kerbin orbit", "target_altitude_m", targetAltitude,
                   "orbit_altitude_m", plan.OrbitAltitude, "stages", c.Stages.Select(s => new[] { s.DryMass, s.FuelMass, s.ThrustVac, s.IspVac, s.IspSl }),
+                  "all_phases", report.Full.Stages.Select(s => new[] { s.DryMass, s.FuelMass, s.ThrustVac, s.IspVac, s.IspSl }),
+                  "phase_stages", report.PhaseStages, "full_payload_kg", report.Full.Payload, "full_delta_v", report.Full.IdealDeltaV,
+                  "stock_stages", report.StockStages,
                   "payload_kg", c.Payload, "drag_area", c.DragArea, "drag_alpha_area", c.DragAlphaArea, "lift_area", c.LiftArea,
                   "front_area", report.FrontArea, "side_area", report.SideArea, "pad_twr", report.PadTwr,
                   "ideal_delta_v", c.IdealDeltaV, "warnings", report.Warnings,
@@ -168,6 +210,7 @@ namespace OrbiterRL
 
         private IEnumerator GeneralizedRun()
         {
+            if (Interplanetary) yield return WaitOnPad();
             yield return GeneralizedAscentFlight();
             if (target == null)
             {
@@ -178,7 +221,12 @@ namespace OrbiterRL
                     "Stable {0:0.0} x {1:0.0} km Kerbin orbit verified for one full revolution", vessel.orbit.PeA / 1000, vessel.orbit.ApA / 1000));
                 yield break;
             }
-            yield return Transfer();
+            if (Interplanetary)
+            {
+                yield return PlanetTransfer();
+                yield return Cruise();
+            }
+            else yield return Transfer();
             yield return CoastToTarget();
             yield return GeneralizedArrival();
         }
@@ -216,12 +264,28 @@ namespace OrbiterRL
             return active.Count == 0 || active.All(e => !VesselInfo.HasFuel(e) || VesselInfo.AvailableThrust(e, vessel) <= 1e-3);
         }
 
-        /// <summary>Activate stages (decouplers, then ignition) until a fueled engine runs; bounded.</summary>
-        private IEnumerator StageToNextEngines()
+        /// <summary>
+        /// The current phase is over: no engine runs, or an engine the next stage
+        /// drops has burned out (side boosters and asparagus pairs).
+        /// </summary>
+        private bool PhaseComplete()
+        {
+            if (EnginesDepleted()) return true;
+            int next = vessel.currentStage - 1;
+            return next >= 0 && VesselInfo.Engines(vessel).Any(e => VesselInfo.Active(e) && !VesselInfo.HasFuel(e)
+                                                                    && VesselInfo.DecoupleStage(e.part) == next);
+        }
+
+        /// <summary>
+        /// Activate stages (decouplers, then ignition) until a fueled engine runs
+        /// and, with ``dropSpent``, no burned-out engine is left to drop; bounded.
+        /// </summary>
+        private IEnumerator StageToNextEngines(bool dropSpent = false)
         {
             for (int attempt = 0; attempt < 6; attempt++)
             {
                 if (vessel.currentStage <= 0) break;
+                if (attempt > 0 && ReadyEngines().Count > 0 && !(dropSpent && PhaseComplete())) yield break;
                 int before = vessel.currentStage;
                 StageManager.ActivateNextStage();
                 if (controlPart != null && controlPart.vessel != vessel)
@@ -232,17 +296,15 @@ namespace OrbiterRL
                 }
                 Write("activate_stage", "before", before, "after", vessel.currentStage, "ut", Now);
                 yield return new WaitUt(Now + StageSettle);
-                if (ReadyEngines().Count > 0) yield break;
+                if (ReadyEngines().Count > 0 && !(dropSpent && PhaseComplete())) yield break;
             }
             if (ReadyEngines().Count == 0) throw new MissionFailure("out_of_fuel", "No further engine stage could be ignited");
         }
 
         private int CurrentStageIndex()
         {
-            List<int> stages = ReadyEngines().Select(e => e.part.inverseStage).Distinct().ToList();
-            if (stages.Count != 1) throw new MissionFailure("parallel_stages", "Engines from different stages are running together");
-            int index = Array.IndexOf(report.ActivationStages, stages[0]);
-            if (index < 0) throw new MissionFailure("unexpected_stage", "An unexpected engine stage ignited");
+            int index = report.PhaseIndex(vessel.currentStage);
+            if (index < 0) throw new MissionFailure("unexpected_stage", "No propulsive stage has fired");
             return index;
         }
 
@@ -264,6 +326,9 @@ namespace OrbiterRL
             attitude.Throttle = 1.0;
             yield return StageToNextEngines();
             int stage = CurrentStageIndex();
+            // Each phase's remaining propellant, by mass: the phase burns FuelMass from
+            // the mass it had when it began (KSP's simulation fixes which tanks feed it).
+            double phaseStart = VesselInfo.Mass(vessel);
             bool leftGround = false;
             string reason = "step_limit";
             int maxSteps = (int)Math.Ceiling(generalAscent.MaxTime / generalAscent.ControlDt) + 2;
@@ -271,15 +336,23 @@ namespace OrbiterRL
             {
                 for (int step = 0; step < maxSteps; step++)
                 {
-                    GeneralizedAscentTelemetry t = SampleGeneralAscent(stage, startUt, throttle);
+                    GeneralizedAscentTelemetry t = SampleGeneralAscent(stage, startUt, throttle, phaseStart);
                     double surface = VesselInfo.SurfaceAltitude(vessel);
-                    leftGround |= vessel.situation == Vessel.Situations.FLYING || surface > 20;
+                    // KSP must call the rocket airborne: terrain height can read stale for a
+                    // moment after a long time warp on the pad.
+                    leftGround |= vessel.situation == Vessel.Situations.FLYING && surface > 20;
                     bool landed = vessel.situation == Vessel.Situations.LANDED || vessel.situation == Vessel.Situations.SPLASHED;
                     if (generalAscent.Success(craft, t.Energy, t.Apoapsis, t.Periapsis)) { reason = "orbit_achieved"; break; }
                     if (t.Energy >= 0) { reason = "escape"; break; }
-                    if (surface < -0.1 || (leftGround && landed)) { reason = "impact"; break; }
+                    if (surface < -0.1 || (leftGround && landed))
+                    {
+                        Write("impact_detected", "surface", surface, "situation", vessel.situation.ToString(),
+                              "height_from_terrain", vessel.heightFromTerrain, "altitude", vessel.altitude);
+                        reason = "impact";
+                        break;
+                    }
                     if (t.Time >= generalAscent.MaxTime - 1e-8) { reason = "time_limit"; break; }
-                    if (stage == craft.Stages.Length - 1 && EnginesDepleted()) { reason = "out_of_fuel"; break; }
+                    if (EnginesDepleted() && vessel.currentStage <= 0) { reason = "out_of_fuel"; break; }
                     float[] observation = generalAscent.Observation(craft, t);
                     history.Append(observation, previous);
                     double[] action = policy.Act(history.Window);
@@ -301,10 +374,14 @@ namespace OrbiterRL
                         servoPitch = GeneralizedAscentContract.Servo(servoPitch, pitchCommand, craft.AttitudeRate, craft.AttitudeTau, dt);
                         attitude.Point(PitchHeading90(servoPitch));
                         attitude.Throttle = throttle;
-                        if (stage < craft.Stages.Length - 1 && EnginesDepleted())
+                        if (vessel.currentStage > 0 && PhaseComplete())
                         {
-                            yield return StageToNextEngines();
-                            stage = CurrentStageIndex();
+                            // Past the climb's own phases (rare: they hold the trained delta-v)
+                            // the policy keeps its last stage index and sees that stage empty.
+                            yield return StageToNextEngines(true);
+                            int next = Math.Min(CurrentStageIndex(), craft.Stages.Length - 1);
+                            if (next != stage) phaseStart = VesselInfo.Mass(vessel);
+                            stage = next;
                         }
                         yield return null;
                     }
@@ -320,7 +397,7 @@ namespace OrbiterRL
             if (controlPart.vessel != vessel) throw new MissionFailure("vessel_changed", "The controlling part left the vessel during ascent");
         }
 
-        private GeneralizedAscentTelemetry SampleGeneralAscent(int stage, double startUt, double commandedThrottle)
+        private GeneralizedAscentTelemetry SampleGeneralAscent(int stage, double startUt, double commandedThrottle, double phaseStart)
         {
             Vector3d rWorld = vessel.CoMD - vessel.mainBody.position;
             double radius = rWorld.magnitude;
@@ -336,7 +413,7 @@ namespace OrbiterRL
                 Periapsis = o.PeA,
                 Energy = energy,
                 DynamicPressure = vessel.dynamicPressurekPa * 1000.0,
-                StageFuel = report.StageFuel(vessel, stage),
+                StageFuel = Math.Max(0.0, VesselInfo.Mass(vessel) - (phaseStart - report.Craft.Stages[stage].FuelMass)),
                 Mass = VesselInfo.Mass(vessel),
                 Pitch = VesselInfo.Pitch(vessel),
                 Throttle = commandedThrottle,
@@ -348,10 +425,11 @@ namespace OrbiterRL
 
         // ------------------------------------------------------------ capture
 
-        private IEnumerator GeneralizedCapture(GeneralizedCaptureConfig config)
+        /// <summary>Closed-loop capture: the all-body LSTM, or with ``teacher`` the feedback law it learned from.</summary>
+        private IEnumerator GeneralizedCapture(GeneralizedCaptureConfig config, bool teacher = false)
         {
             SequencePolicy policy = policies.GeneralCapture;
-            SetPhase("capture", "Learned capture burn into a " + target.bodyName + " orbit");
+            SetPhase("capture", (teacher ? "Feedback" : "Learned") + " capture burn into a " + target.bodyName + " orbit");
             Orbit arrival = new Orbit(vessel.orbit.inclination, vessel.orbit.eccentricity, vessel.orbit.semiMajorAxis,
                                       vessel.orbit.LAN, vessel.orbit.argumentOfPeriapsis, vessel.orbit.meanAnomalyAtEpoch,
                                       vessel.orbit.epoch, vessel.orbit.referenceBody);
@@ -401,17 +479,25 @@ namespace OrbiterRL
                         throw new MissionFailure("out_of_fuel", "Capture exhausted propellant");
                     }
                     float[] observation = GeneralizedCaptureContract.Observation(config, d);
-                    history.Append(observation, previous);
-                    double[] action = policy.Act(history.Window);
-                    previous = action;
+                    double[] action;
+                    if (teacher) action = GeneralizedCaptureContract.Teacher(config, d);
+                    else
+                    {
+                        history.Append(observation, previous);
+                        action = policy.Act(history.Window);
+                        previous = action;
+                    }
                     V3 directionRtn;
                     double throttle = GeneralizedCaptureContract.Decode(config, d, action, out directionRtn);
                     if (inBand) throttle = 0;
-                    Vector3d pointing = Frames.ToWorld(new Rtn(r, v).ToFrame(directionRtn));
+                    // The feedback law commands nothing once in the band: hold the attitude.
+                    bool idle = !(directionRtn.Norm > 1e-9);
+                    if (idle) throttle = 0;
+                    Vector3d pointing = idle ? Frames.Nose(vessel) : Frames.ToWorld(new Rtn(r, v).ToFrame(directionRtn));
                     Write("capture_telemetry", "step", step, "ut", ut, "periapsis", o.PeA, "apoapsis", o.ApA,
                           "plane_error_deg", plane, "in_band", inBand, "observation", observation,
                           "policy_action", action, "throttle", throttle);
-                    Detail = string.Format(CultureInfo.InvariantCulture, "Learned capture: periapsis {0:0.0} km, apoapsis {1:0.0} km",
+                    Detail = string.Format(CultureInfo.InvariantCulture, (teacher ? "Feedback" : "Learned") + " capture: periapsis {0:0.0} km, apoapsis {1:0.0} km",
                                            o.PeA / 1000, o.ApA / 1000);
                     // As in training, the engine thrusts along wherever it points while it
                     // turns toward the command (holding fire until aligned stalls small

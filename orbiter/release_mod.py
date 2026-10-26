@@ -33,8 +33,8 @@ PATH_MARKERS = (
 
 README_TEXT = """Orbiter Autopilot {version}
 
-Flies your rocket from the Kerbin launchpad to orbit, and on to the Mun or
-Minmus, by itself. The flying is done by neural networks that learned to
+Flies your rocket from the Kerbin launchpad to orbit, and on to a moon or a
+planet, by itself. The flying is done by neural networks that learned to
 launch, stage and brake into orbit. Nothing else to install: no other mods,
 no Python, no setup.
 
@@ -47,21 +47,28 @@ Fly
      ready-made "OrbiterRL Transfer", which the mod builds from your stock
      Orbiter One and Science Jr craft. Find it in the VAB under stock vessels.
   2. Click the Orbiter button on the toolbar.
-  3. Pick Kerbin orbit, Mun or Minmus and an altitude, then press Run.
+  3. Pick where to go (Kerbin orbit, Mun, Minmus, Duna, Eve, Moho, Dres, Jool
+     or Eeloo) and an altitude, then press Run.
   4. Press Stop at any time to take back control.
 
 Which rockets
-  Up to four stages stacked on top of each other, liquid engines only, each
-  stage dropping its engine and tanks when empty. No solid boosters, side
-  boosters or fuel lines. It needs a launch thrust-to-weight above about 1.2
-  and enough fuel for orbit. The window tells you if your rocket can't be flown.
+  Liquid-fuel rockets: stacked stages, side boosters, and asparagus staging
+  with fuel lines all work. No solid boosters yet. It needs a launch
+  thrust-to-weight above about 1.2 and enough fuel for the trip; the window
+  tells you before launch if your rocket can't do it.
+
+Planets
+  The mod waits on the launchpad for the launch window (time warp does it
+  quickly), launches, leaves Kerbin, fixes the course on the way and brakes
+  into orbit. Trips take months to years of game time.
 
 Good to know
   - OrbiterRL Transfer to the Mun or Minmus uses the original policies, which
-    have flown full missions in real KSP. Every other rocket uses the newer
-    "any rocket" policies: they have reached orbit in real KSP with a few
-    test rockets, but they are new, so expect the odd failure.
-  - Career mode needs maneuver nodes unlocked for Mun and Minmus trips.
+    have flown full missions in real KSP. Every other rocket and destination
+    uses the newer "any rocket" policies. They are new, so expect the odd
+    failure.
+  - Career mode needs maneuver nodes and patched conics unlocked for trips
+    beyond Kerbin orbit.
   - Each flight is logged in GameData/OrbiterAutopilot/Logs.
 
 License: MIT (see LICENSE). Game assets and other mods are not included.

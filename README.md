@@ -104,10 +104,13 @@ start the addon builds **OrbiterRL Transfer** in `Ships/VAB` from your own stock
 `Orbiter One` and `Science Jr` craft (existing files are never overwritten, and no
 stock-derived craft is distributed). Launch it onto the pad, click **Orbiter** in
 the flight toolbar, choose **Mun** or **Minmus** and a **40–60 km** orbit, and
-press **Run**. **Stop** releases throttle and steering immediately. A preflight
-check refuses other craft, a moved stage plan, or a missing maneuver-node
-capability (Career needs upgraded Tracking Station or Mission Control). Each
-flight is logged as JSON lines in `GameData/OrbiterAutopilot/Logs`.
+press **Run**. Other liquid rockets, a **Kerbin orbit** destination and the
+planets **Moho, Eve, Duna, Dres, Jool and Eeloo** use the generalized policies
+and planners described below. **Stop** releases throttle and steering
+immediately. A preflight check refuses unsupported rockets, too little delta-v,
+or a missing maneuver-node capability (Career needs upgraded Tracking Station or
+Mission Control). Each flight is logged as JSON lines in
+`GameData/OrbiterAutopilot/Logs`.
 
 The addon source is in `orbiter/native`: `Core/` holds the Unity-free policy,
 observation, orbital-mechanics, planner and craft-builder ports, and `Ksp/` the
@@ -156,15 +159,23 @@ destination, are flown by the generalized policies: the GRU ascent
 campaign. In simulation they succeeded on 492/512 unseen two-to-three-stage and
 511/512 four-stage rockets, and on 401/544 capture cases across the stock bodies.
 `orbiter/native/Ksp/CraftAnalyzer.cs` reads the rocket on the pad into the
-training description: up to four sequential liquid stages (engines that ignite
-together and drop with their own tanks), vacuum thrust, vacuum and sea-level Isp,
-and payload. Solid, jet and ion engines, parallel boosters and fuel lines are
-refused, as are rockets with a launch thrust-to-weight below 1.05 or under
-3,800 m/s of vacuum delta-v. Values outside the training ranges produce
+training description from KSP's own delta-v simulation (`VesselDeltaV`), which
+follows fuel lines, crossfeed and the staging order. Every KSP stage that burns
+fuel becomes one phase: the propellant it burns, its vacuum thrust, vacuum and
+sea-level Isp, and the mass dropped before the next phase. That is exactly the
+simulator's notion of a stage, so stacked stages, side boosters and asparagus
+staging all map onto it without retraining; during the climb a stage fires as
+soon as an engine that the next stage drops has burned out. The ascent policy
+sees the fewest phases (at most four) that hold the 4,800 m/s its training
+rockets had; any stages above them count as payload and fly the later maneuver
+nodes. Solid, jet and ion engines are refused (solid boosters cannot be
+throttled, and the policy controls throttle), as are rockets with a launch
+thrust-to-weight below 1.05, under 3,800 m/s of climb delta-v, or without the
+delta-v the whole trip needs. Values outside the training ranges produce
 warnings. Drag and lift areas are estimated by scaling the coefficients fitted
 to an actual OrbiterRL Terrier flight by the rocket's own KSP drag-cube frontal
-and side areas, then clamped to the training range; this is an estimate, not a
-fit. The commanded pitch passes through the simulator's rate-limited servo
+(summed over side-by-side columns of parts) and side areas, then clamped to the
+training range; this is an estimate, not a fit. The commanded pitch passes through the simulator's rate-limited servo
 (8°/s, τ 0.8 s) before the attitude controller tracks it. Stages fire when the
 running engines are dry, including during node burns. The all-body capture trained only with spacecraft whose dry mass is at most
 40% of their mass, so at least about 2.5 km/s on board. A real upper stage
@@ -191,6 +202,63 @@ OrbiterRL Liquid was refused before launch for 3,655 m/s of delta-v. The
 log, including the failed all-body capture described above. These are individual
 demonstrations with three closely related 1.25 m rockets, not a success rate.
 
+#### Planets
+
+**Moho, Eve, Duna, Dres, Jool and Eeloo** are reached from a Kerbin parking orbit
+(`orbiter/native/Ksp/Mission.Interplanetary.cs`, `Planner.PlanInterplanetary`).
+A Lambert grid over departure date and flight time, refined around the earliest
+departure within 5% of the cheapest, picks the window; its cost is the escape
+burn from the parking orbit plus the capture. The escape is priced from the
+actual parking-orbit plane: a departure asymptote out of that plane tilts the
+hyperbola, and the burn pays for the plane change (the analytic price matches
+the solved burn to 1e-6). Kerbin caps time warp at
+50x below 120 km, so the mission waits for the window on the launchpad and
+launches about an hour before departure. The escape burn is placed where the
+departure hyperbola's asymptote points along the required excess velocity,
+then refined by shooting against KSP's own patched conics: the heliocentric
+state KSP predicts after the SOI exit is compared with a Lambert arc to the
+arrival point, and the difference is added to the requested excess velocity
+until they agree within 0.5 m/s. An escape path through the Mun's or Minmus's
+sphere of influence is postponed by one parking orbit at a time. In solar orbit,
+course corrections aimed at the arrival periapsis are verified with KSP's
+patched conics before they fire, until the predicted periapsis is within 2% of
+the target's SOI (the correction inside the SOI does the rest). The capture
+uses `GeneralizedCaptureContract.Teacher`, the hand-written feedback law the
+all-body capture policy was distilled from: in simulation it outperformed the
+learned policy (87% against 74% overall; Duna 94% against 84%, Eve 44% against
+22%), and its failures on heavy planets came from weak engines, not from the
+law. When the thrust is below 0.8 of the local gravity at the target orbit or
+the circularizing burn would be long, retrograde periapsis burns first capture
+into an ellipse (apoapsis at most half the SOI) and shrink it, each short
+enough to stay near periapsis, with an apoapsis trim holding the periapsis on
+the goal; the feedback law flies the final pass. The preflight check refuses
+rockets without the delta-v for the climb plus the trip (window estimate plus
+5% and 50 m/s).
+
+In actual KSP 1.12.5 the stock asparagus rocket **Kerbal X** (three pairs of
+boosters on fuel lines, a core and an upper stage; KSP's simulation gave five
+phases, of which the climb used four) reached an 80.5 x 91.3 km Kerbin orbit on
+its boosters and core alone. To **Duna** (70 km goal) it waited 227 days on the
+pad, reached an 80 x 91 km parking orbit, postponed the escape five orbits to
+clear the Mun, converged the escape to 0.07 m/s in four shooting iterations,
+flew a 15.6 m/s course correction (predicted periapsis 7,117 km to 161 km), a
+0.85 m/s correction inside Duna's SOI, and a single feedback capture into a
+**68.2 x 72.5 km** orbit that held through one unpowered revolution. That
+mission needed four fixes found in flight, and resumed from checkpoints after
+each: a false impact from stale terrain height after the pad warp, a resume
+that picked the next synodic window, the Mun flyby on the escape path, and a
+zero feedback command once inside the band. The
+[planet flight manifest](validation/planets/manifest.json) links every log,
+including the failed attempts. The multi-pass capture for weak engines has
+not been flown yet, in KSP or in simulation; Kerbal X's upper stage was strong
+enough for a single pass. An **Eve** attempt with Kerbal X was stopped before
+its escape burn: that window's departure had a 26° declination, and the
+single-burn escape from the equatorial parking orbit solved to 2,634 m/s against
+the 1,108 m/s in-plane estimate. Escape costs are now priced with the tilt, and
+the solved burn must leave the capture's delta-v before it fires. Priced this
+way the cheapest Eve trip needs about 2,600 m/s after reaching orbit, more than
+Kerbal X carries with the margins, so the preflight check now refuses it.
+
 The earlier Python/kRPC toolbar bridge, validated by the flights above, is kept
 as evidence in `validation/missions/ksp_bridge_frontend_0.1.cs`.
 
@@ -199,7 +267,7 @@ as evidence in `validation/missions/ksp_bridge_frontend_0.1.cs`.
 Package the compiled addon with the two validated policies:
 
 ```sh
-.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.3.0.zip
+.venv/bin/python -m orbiter.release_mod --assembly runs/mod/OrbiterAutopilot.dll --output runs/release/OrbiterAutopilot-0.4.0.zip
 ```
 
 The ZIP contains only `GameData/OrbiterAutopilot`: the DLL, `Policies/`,
