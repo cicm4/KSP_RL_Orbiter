@@ -254,6 +254,32 @@ namespace OrbiterRL.Core
             return result;
         }
 
+        /// <summary>
+        /// BatchedCapture.teacher: the hand-written feedback capture the policy was
+        /// distilled from. A critically damped law on radius and circular speed plus
+        /// the plane, as an RTN action in units of the authority (norm at most 1).
+        /// </summary>
+        public static double[] Teacher(GeneralizedCaptureConfig c, GeneralizedCaptureTelemetry d)
+        {
+            double plane;
+            if (InBand(c, d.R, d.V, d.GoalNormal, out plane)) return new double[3];
+            Rtn basis = new Rtn(d.R, d.V);
+            V3 localV = basis.ToLocal(d.V);
+            double radius = d.R.Norm, vr = localV.X, vt = localV.Y;
+            double tau = Math.Max(3 * c.ControlDt, .055 * c.T);
+            double ar = c.Mu / (radius * radius) - vt * vt / radius - 2 * vr / tau - (radius - c.Goal) / (tau * tau);
+            double at = vr * vt / radius - (vt - Math.Sqrt(c.Mu / radius)) / tau;
+            V3 localGoal = basis.ToLocal(d.GoalNormal);
+            double planePosition = V3.Dot(d.R, d.GoalNormal), planeVelocity = V3.Dot(d.V, d.GoalNormal);
+            double an = (-2 * planeVelocity / tau - planePosition / (tau * tau)
+                         + c.Mu / (radius * radius * radius) * planePosition
+                         - ar * localGoal.X - at * localGoal.Y) / Math.Max(localGoal.Z, .2);
+            double authority = Math.Max(Authority(c, d), 1e-30);
+            V3 action = new V3(ar, at, an) / authority;
+            action = action / Math.Max(action.Norm, 1.0);
+            return new[] { action.X, action.Y, action.Z };
+        }
+
         /// <summary>Throttle (fraction of physical thrust) and RTN unit direction.</summary>
         public static double Decode(GeneralizedCaptureConfig c, GeneralizedCaptureTelemetry d, double[] action, out V3 directionRtn)
         {

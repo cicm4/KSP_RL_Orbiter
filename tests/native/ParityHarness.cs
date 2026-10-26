@@ -241,6 +241,57 @@ public static class ParityHarness
                                       direction.X, direction.Y, direction.Z, inBand ? 1.0 : 0.0 }
                               .Concat(GeneralizedCaptureContract.Observation(c, d).Select(x => (double)x)));
             }
+            case "gen_teacher":
+            {
+                SequencePolicy policy = LoadSequence(S());
+                string body = S();
+                double mu = D(), radius = D(), atmosphere = D(), soi = D(), altitude = D();
+                GeneralizedCaptureConfig c = GeneralizedCaptureConfig.For(policy, body, mu, radius, atmosphere, soi, altitude);
+                GeneralizedCaptureTelemetry d = new GeneralizedCaptureTelemetry
+                {
+                    R = V(), V = V(), Direction = V(), GoalNormal = V(), Mass = D(), InitialMass = D(),
+                    DryMass = D(), Thrust = D(), Isp = D(), Time = D(),
+                };
+                return Format(GeneralizedCaptureContract.Teacher(c, d));
+            }
+            case "interplanetary":
+            {
+                double parentMu = D();
+                Body origin = ReadBody(), target = ReadBody();
+                KeplerEphemeris a = new KeplerEphemeris(parentMu, D(), D(), D(), D(), V(), V());
+                KeplerEphemeris b = new KeplerEphemeris(parentMu, D(), D(), D(), D(), V(), V());
+                double epoch = D(), parking = D(), altitude = D(), span = D();
+                InterplanetaryPlan plan = Planner.PlanInterplanetary(origin, target, a, b, parentMu, epoch, parking, altitude, span);
+                return Format(new[] { plan.DepartureUt, plan.ArrivalUt, plan.EjectionDeltaV, plan.CaptureDeltaV,
+                                      plan.ArrivalVinf, plan.LongWay ? 1.0 : 0.0 }.Concat(Of(plan.DepartureVinf)));
+            }
+            case "ejection_cost":
+            {
+                double mu = D(), radius = D();
+                V3 vinf = V(), normal = V();
+                return Format(new[] { Planner.EjectionDeltaV(mu, radius, vinf, normal) });
+            }
+            case "ejection":
+            {
+                V3 r = V(), v = V();
+                double epoch = D(), mu = D();
+                V3 vinf = V();
+                double center = D(), ut;
+                V3 delta;
+                if (!Planner.EjectionBurn(r, v, epoch, mu, vinf, center, out ut, out delta)) return "none";
+                return Format(new[] { ut }.Concat(Of(delta)));
+            }
+            case "course":
+            {
+                V3 r = V(), v = V();
+                double epoch = D(), mu = D();
+                Body target = ReadBody();
+                KeplerEphemeris e = new KeplerEphemeris(mu, D(), D(), D(), D(), V(), V());
+                double nominal = D(), altitude = D(), lead = D();
+                TransferPlan plan = Planner.PlanCorrection(r, v, epoch, mu, target, e, nominal, altitude, lead);
+                return Format(new[] { plan.DepartureUt, plan.ArrivalUt, plan.ArrivalVinf, plan.LongWay ? 1.0 : 0.0 }
+                              .Concat(Of(plan.DeltaV)).Concat(Of(plan.AimOffset)).Concat(Of(plan.DeparturePosition)));
+            }
             case "gen_band":
             {
                 SequencePolicy policy = LoadSequence(S());

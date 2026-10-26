@@ -14,7 +14,7 @@ namespace OrbiterRL
     public sealed class OrbiterAutopilot : MonoBehaviour
     {
         private const string InputLock = "OrbiterAutopilotWindow";
-        private static readonly string[] Destinations = { "Kerbin orbit", "Mun", "Minmus" };
+        private static readonly string[] Destinations = { "Kerbin orbit", "Mun", "Minmus", "Duna", "Eve", "Moho", "Dres", "Jool", "Eeloo" };
         private static MissionPolicies policies;
         private static string loadError;
 
@@ -212,7 +212,8 @@ namespace OrbiterRL
             if (problem != null && problem.StartsWith("Choose a")) problem = null; // altitude is checked on Run
             readiness = problem ?? (check.ResumeFrom == null ? "Ready on the launchpad"
                 : "Ready to continue the mission from " + (check.ResumeFrom == "transfer" ? "this orbit"
-                    : check.ResumeFrom == "coast" ? "the transfer coast" : "the approach"));
+                    : check.ResumeFrom == "coast" || check.ResumeFrom == "cruise" ? "the transfer coast"
+                    : check.ResumeFrom == "escape" ? "the escape" : "the approach"));
             craftSummary = Summary(check, low, high);
         }
 
@@ -234,12 +235,12 @@ namespace OrbiterRL
         private void DrawWindow(int id)
         {
             Vessel vessel = FlightGlobals.ActiveVessel;
-            GUILayout.Label("Learned launch, transfer and capture", wrapped);
+            GUILayout.Label("Learned launch, transfer and capture to moons and planets", wrapped);
             GUILayout.Label(vessel == null ? "No active vessel" : vessel.vesselName + " · " + vessel.mainBody.bodyName, wrapped);
             bool running = runner.Running;
             GUILayout.Space(6);
             GUI.enabled = !running;
-            destination = GUILayout.Toolbar(destination, Destinations);
+            destination = GUILayout.SelectionGrid(destination, Destinations, 3);
             GUILayout.BeginHorizontal();
             GUILayout.Label("Orbit altitude", GUILayout.Width(105));
             altitudeKm = GUILayout.TextField(altitudeKm, 6, GUILayout.Width(75));
@@ -286,7 +287,7 @@ namespace OrbiterRL
             if (check.Validated) return range + "Trained OrbiterRL Transfer rocket: flown by the validated policies.";
             CraftReport report = check.Report;
             if (report == null || report.Craft == null) return range;
-            CraftSpec c = report.Craft;
+            CraftSpec c = report.Full;
             string text = range + string.Format(CultureInfo.InvariantCulture,
                 "Any-rocket policies (simulation-tested): {0} stage{1}, {2:0.0} t, {3:0} m/s, launch TWR {4:0.00}.",
                 c.Stages.Length, c.Stages.Length == 1 ? "" : "s", c.InitialMass / 1000, c.IdealDeltaV, report.PadTwr);
@@ -302,7 +303,9 @@ namespace OrbiterRL
                 case "ascent": return "Launch · climbing to parking orbit";
                 case "transfer_planning": return "Parking orbit · checking an encounter";
                 case "maneuver": return "Transfer · executing a maneuver";
+                case "window_wait": return "Parking orbit · waiting for the launch window";
                 case "transfer_coast": return "Transfer · coasting to the destination";
+                case "course_correction": return "Transfer · correcting the course";
                 case "capture_coast": return "Capture · approaching the burn";
                 case "capture": return "Capture · establishing the target orbit";
                 case "orbit_verification": return "Verifying a full unpowered orbit";
@@ -455,11 +458,17 @@ namespace OrbiterRL
                 yield return new WaitForSeconds(0.1f);
             yield return new WaitForSeconds(3f);
             string problem = addon.StartMission(target, altitude);
+            // KSP's delta-v simulation needs a few frames after a fresh launch.
+            for (int i = 0; i < 30 && problem != null && problem.Contains("still calculating"); i++)
+            {
+                yield return new WaitForSeconds(1f);
+                problem = addon.StartMission(target, altitude);
+            }
             if (problem != null) { Result("preflight_failed: " + problem); yield break; }
             // Save resumable checkpoints so later tests can start mid-mission.
             addon.Current.PhaseChanged += phase =>
             {
-                if (phase != "capture_coast" && phase != "transfer_planning") return;
+                if (phase != "capture_coast" && phase != "transfer_planning" && phase != "course_correction") return;
                 string name = "autotest-" + target + "-" + phase;
                 GamePersistence.SaveGame(HighLogic.CurrentGame.Updated(), name, HighLogic.SaveFolder, SaveMode.OVERWRITE);
                 Debug.Log("[OrbiterAutopilot] autotest saved " + name);

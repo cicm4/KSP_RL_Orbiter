@@ -99,3 +99,13 @@ def test_installer_refuses_modified_or_foreign_addons(game, tmp_path, policies):
     (destination / ".orbiter-install.json").write_text(json.dumps({"application": "other"}))
     with pytest.raises(ValueError, match="owned"):
         mod.install_addon(game, assembly, policies, replace=True)
+
+
+def test_craft_analyzer_constants_mirror_the_training_envelope():
+    import re
+
+    from orbiter.generalized_env import VehicleEnvelope
+
+    source = (Path(mod.__file__).parent / "native/Ksp/CraftAnalyzer.cs").read_text()
+    trained = float(re.search(r"TrainedDeltaV = ([0-9.]+)", source).group(1))
+    assert trained == VehicleEnvelope().minimum_ideal_delta_v
